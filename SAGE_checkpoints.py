@@ -19,7 +19,7 @@ import random
 from torch.utils.data import DataLoader, RandomSampler
 import logging
 import os
-from google.colab import drive  # 👈 NEW: Import for Drive mounting
+
 
 # --- Global Checkpoint Configuration ---
 CHECKPOINT_DIR_BASE = '/content/drive/MyDrive/FL_SAGE_Checkpoints'  # Base directory on Google Drive
@@ -260,11 +260,6 @@ class Local(object):
 
 
 def fixmatch(alpha):
-    # ----------------------------------------------------
-    # 🌟 NEW: Mount Google Drive and Set Checkpoint Path
-    # You must run this cell *before* executing the FL loop
-    print("Mounting Google Drive...")
-    drive.mount('/content/drive')
 
     # Define a unique checkpoint directory for this run's parameters
     checkpoint_dir = os.path.join(CHECKPOINT_DIR_BASE, f'{args.dataset}_a{alpha}')
