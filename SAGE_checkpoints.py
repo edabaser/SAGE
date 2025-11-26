@@ -20,11 +20,6 @@ from torch.utils.data import DataLoader, RandomSampler
 import logging
 import os
 
-
-# --- Global Checkpoint Configuration ---
-CHECKPOINT_DIR_BASE = '/content/drive/MyDrive/FL_SAGE_Checkpoints'  # Base directory on Google Drive
-# ---------------------------------------
-
 worker_num = 4
 
 
@@ -260,14 +255,15 @@ class Local(object):
 
 
 def fixmatch(alpha):
+    args = args_parser()
 
     # Define a unique checkpoint directory for this run's parameters
-    checkpoint_dir = os.path.join(CHECKPOINT_DIR_BASE, f'{args.dataset}_a{alpha}')
+    # --- Checkpoint Path using args ---
+    checkpoint_dir = os.path.join(args.checkpoint_dir, f'{args.dataset}_a{alpha}')
     os.makedirs(checkpoint_dir, exist_ok=True)
     print(f"Checkpoints will be saved to: {checkpoint_dir}")
     # ----------------------------------------------------
 
-    args = args_parser()
 
     # ... (Dataset setup and logging configuration remains the same)
     # ... (The logging configuration needs the log_file, so keeping it here)

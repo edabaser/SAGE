@@ -33,6 +33,11 @@ def args_parser():
     parser.add_argument('--lr_local_training', type=float, default=0.1)
     parser.add_argument('--lr_distillation_training', type=float, default=0.1)
 
+    #Checkpoint
+    parser.add_argument('--checkpoint_dir', type=str,
+                        default='/content/drive/MyDrive/FL_SAGE_Checkpoints',
+                        help='Base directory to save and load model checkpoints.')
+
     # dataset path
     parser.add_argument('--path_cifar10', type=str, default=os.path.join(path_dir, 'data/CIFAR10/'))
     parser.add_argument('--path_cifar100', type=str, default=os.path.join(path_dir, 'data/CIFAR100/'))
