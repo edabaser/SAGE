@@ -35,7 +35,7 @@ def args_parser():
 
     #Checkpoint
     parser.add_argument('--checkpoint_dir', type=str,
-                        default='/content/drive/MyDrive/FL_SAGE_Checkpoints',
+                        default='/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints',
                         help='Base directory to save and load model checkpoints.')
 
     # dataset path

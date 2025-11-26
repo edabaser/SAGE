@@ -280,7 +280,7 @@ def fixmatch(alpha):
     if args.dataset == 'CIFAR10':
         args.num_classes = 10
         args.num_labeled = 500
-        args.num_rounds = 100
+        args.num_rounds = 300
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
@@ -291,7 +291,7 @@ def fixmatch(alpha):
     elif args.dataset == 'CIFAR100':
         args.num_classes = 100
         args.num_labeled = 50
-        args.num_rounds = 100
+        args.num_rounds = 500
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
@@ -303,7 +303,7 @@ def fixmatch(alpha):
     elif args.dataset == 'SVHN':
         args.num_classes = 10
         args.num_labeled = 460
-        args.num_rounds = 100
+        args.num_rounds = 150
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970)),
@@ -314,7 +314,7 @@ def fixmatch(alpha):
     elif args.dataset == 'CINIC10':
         args.num_classes = 10
         args.num_labeled = 900
-        args.num_rounds = 100
+        args.num_rounds = 400
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4789, 0.4723, 0.4305), (0.2421, 0.2383, 0.2587)),
