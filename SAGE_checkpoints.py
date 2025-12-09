@@ -324,21 +324,14 @@ def fixmatch(alpha):
             f"Error: Unsupported dataset {args.dataset}. Please specify one of the following: CIFAR10, CIFAR100, CINIC10 or SVHN.")
         exit(1)
 
-    print(
-        'dataset:{dataset}\n'
-        'num_classes:{num_classes}\n'
-        'num_labeled:{num_labeled}\n'
-        'non_iid:{alpha}\n'
-        'mu:{mu}\n'
-        'num_rounds:{num_rounds}\n'
-        'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
-            dataset=args.dataset,
-            num_classes=args.num_classes,
-            num_labeled=args.num_labeled,
-            alpha=alpha,
-            mu=args.mu,
-            num_rounds=args.num_rounds,
-            batch_label=args.batch_size_local_labeled,
-            batch_unlabel=args.batch_size_local_unlabeled,
-        ))
+print(
+        f"dataset:{args.dataset}\n"
+        f"num_classes:{args.num_classes}\n"
+        f"num_labeled:{args.num_labeled}\n"
+        f"non_iid:{alpha}\n"
+        f"mu:{args.mu}\n"
+        f"num_rounds:{args.num_rounds}\n"
+        f"batch_label:{args.batch_size_local_labeled}, batch_unlabel:{args.batch_size_local_unlabeled}"
+    )
+
 
