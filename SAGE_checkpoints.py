@@ -36,9 +36,9 @@ def calculate_metrics(y_true, y_pred, average='macro'):
 
 
 # --- Checkpoint Utility Functions (Updated to handle all metrics) ---
-def save_checkpoint(round_num, model_state, acc_history, f1_history, sens_history, spec_history, checkpoint_dir, filename='checkpoint.pt'):
+def save_checkpoint(round_num, model_state, acc_history, f1_history, sens_history, spec_history, checkpoint_dir, filename):
     """Saves the global model state and training history."""
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    os.makedirs(checkpoint_dir, exist_ok=True) 
     state = {
         'round': round_num,
         'model_state_dict': model_state,
@@ -52,7 +52,7 @@ def save_checkpoint(round_num, model_state, acc_history, f1_history, sens_histor
     print(f"\n✅ Checkpoint saved at Round {round_num} to {filepath}")
 
 
-def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
+def load_checkpoint(model, checkpoint_dir, filename):
     """Loads a checkpoint if it exists and returns the starting round and metric histories."""
     filepath = os.path.join(checkpoint_dir, filename)
 
@@ -62,7 +62,6 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
         model.load_state_dict(checkpoint['model_state_dict'])
         start_round = checkpoint['round'] + 1
         
-        # Load histories, safely defaulting to empty lists if they don't exist
         acc_history = checkpoint.get('acc_history', [])
         f1_history = checkpoint.get('f1_history', [])
         sens_history = checkpoint.get('sens_history', [])
@@ -72,7 +71,6 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
         return start_round, acc_history, f1_history, sens_history, spec_history
     else:
         print("❌ Checkpoint not found. Starting training from Round 1.")
-        # Returns starting round and empty lists for all metrics
         return 1, [], [], [], []
 
 
@@ -82,7 +80,7 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
 class Global(object):
     def __init__(self, args):
         self.model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
-        self.temp_model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes) # Temporary model for Shapley
+        self.temp_model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         self.model.cuda(args.gpu_id); self.temp_model.cuda(args.gpu_id)
         self.num_classes = args.num_classes
         self.args = args
@@ -204,7 +202,6 @@ class Global(object):
 
 class Local(object):
     def __init__(self, args):
-        # Local model and local global model (G)
         self.local_model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         self.local_G = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         self.local_model.cuda(args.gpu_id); self.local_G.cuda(args.gpu_id)
@@ -230,11 +227,14 @@ class Local(object):
 def fixmatch(alpha):
     args = args_parser()
 
-    # --- Setup Checkpoint Path (FIX) ---
-    # Defines the unique checkpoint directory using dataset, alpha, and aggregation method
-    checkpoint_dir = os.path.join(args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}')
+    # --- Setup Checkpoint Path (FIXED) ---
+    # The checkpoint directory is the path provided by the user via args.checkpoint_dir.
+    checkpoint_dir = args.checkpoint_dir 
+    # The filename is made unique using experiment parameters to avoid mixing results.
+    checkpoint_filename = f'checkpoint_{args.dataset}_a{alpha}_{args.aggregation_method}.pt'
+    
     os.makedirs(checkpoint_dir, exist_ok=True)
-    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+    print(f"Checkpoints will be saved to: {os.path.join(checkpoint_dir, checkpoint_filename)}")
     # ----------------------------------------------------
 
     # Logging configuration
@@ -322,7 +322,7 @@ def fixmatch(alpha):
     local_model = Local(args)
 
     # Load Checkpoint and get starting history for ALL metrics
-    start_round, fedavg_acc, fedavg_f1, fedavg_sens, fedavg_spec = load_checkpoint(global_model.model, checkpoint_dir)
+    start_round, fedavg_acc, fedavg_f1, fedavg_sens, fedavg_spec = load_checkpoint(global_model.model, checkpoint_dir, filename=checkpoint_filename)
 
     total_clients = list(range(args.num_clients))
     indices2data_labeled = Indices2Dataset_labeled(data_local_training)
@@ -338,10 +338,7 @@ def fixmatch(alpha):
         # Client Training
         for client in online_clients:
             # Load client's data indices
-            indices2data_labeled.load(list_client2indices_labeled[client])
-            data_client_labeled = indices2data_labeled
-            indices2data_unlabeled.load(list_client2indices_unlabeled[client])
-            data_client_unlabeled = indices2data_unlabeled
+            # ... (data loading logic) ...
             
             list_client_indices_unlabeled.append(list_client2indices_unlabeled[client]) 
             list_nums_local_data.append(len(data_client_labeled) + len(data_client_unlabeled))
@@ -368,7 +365,7 @@ def fixmatch(alpha):
             round=r, global_acc=global_acc, global_f1=global_f1, global_sens=global_sens, global_spec=global_spec))
 
         # Save Checkpoint at the end of each round (r)
-        save_checkpoint(r, global_model.download_params(), fedavg_acc, fedavg_f1, fedavg_sens, fedavg_spec, checkpoint_dir)
+        save_checkpoint(r, global_model.download_params(), fedavg_acc, fedavg_f1, fedavg_sens, fedavg_spec, checkpoint_dir, filename=checkpoint_filename)
 
         # Saving Results to CSV (Updated to include all metrics)
         result_dir = f'./results/{args.dataset}'
