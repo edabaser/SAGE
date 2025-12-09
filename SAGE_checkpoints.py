@@ -334,3 +334,11 @@ def fixmatch(alpha):
         'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
             dataset=args.dataset,
             num_classes=args.num_classes,
+            num_labeled=args.num_labeled,
+            alpha=alpha,
+            mu=args.mu,
+            num_rounds=args.num_rounds,
+            batch_label=args.batch_size_local_labeled,
+            batch_unlabel=args.batch_size_local_unlabeled,
+        ))
+
