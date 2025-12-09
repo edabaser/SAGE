@@ -19,14 +19,15 @@ import random
 from torch.utils.data import DataLoader, RandomSampler
 import logging
 import os
-from sklearn.metrics import f1_score, recall_score, precision_score # Restored for metrics
+from sklearn.metrics import f1_score, recall_score, precision_score 
 
 worker_num = 4
 
-# --- NEW HELPER FUNCTION: Calculate F1, Sensitivity, Specificity (Restored) ---
+# --- HELPER FUNCTION: Calculate F1, Sensitivity, Specificity ---
 def calculate_metrics(y_true, y_pred, average='macro'):
     """
-    Calculates F1-Score, Sensitivity (Recall), and Specificity (approximated by Precision for multi-class macro avg).
+    Calculates F1-Score, Sensitivity (Recall), and Specificity.
+    Specificity is approximated by Precision for multi-class macro average.
     """
     sensitivity = recall_score(y_true, y_pred, average=average, zero_division=0)
     specificity = precision_score(y_true, y_pred, average=average, zero_division=0)
@@ -34,7 +35,7 @@ def calculate_metrics(y_true, y_pred, average='macro'):
     return f1, sensitivity, specificity
 
 
-# --- Checkpoint Utility Functions (Adjusted to load/save all needed metrics) ---
+# --- Checkpoint Utility Functions (Updated to handle all metrics) ---
 def save_checkpoint(round_num, model_state, acc_history, f1_history, sens_history, spec_history, checkpoint_dir, filename='checkpoint.pt'):
     """Saves the global model state and training history."""
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -58,11 +59,17 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
     if os.path.exists(filepath):
         print(f"\n⏳ Checkpoint found at {filepath}. Loading...")
         checkpoint = torch.load(filepath, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-
         model.load_state_dict(checkpoint['model_state_dict'])
-
         start_round = checkpoint['round'] + 1
-        return start_round, checkpoint['acc_history'], checkpoint['f1_history'], checkpoint['sens_history'], checkpoint['spec_history']
+        
+        # Load histories, safely defaulting to empty lists if they don't exist
+        acc_history = checkpoint.get('acc_history', [])
+        f1_history = checkpoint.get('f1_history', [])
+        sens_history = checkpoint.get('sens_history', [])
+        spec_history = checkpoint.get('spec_history', [])
+        
+        print(f"🚀 Training continues from Round {start_round}. Last Acc: {acc_history[-1]:.4f}")
+        return start_round, acc_history, f1_history, sens_history, spec_history
     else:
         print("❌ Checkpoint not found. Starting training from Round 1.")
         # Returns starting round and empty lists for all metrics
@@ -74,22 +81,15 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
 
 class Global(object):
     def __init__(self, args):
-        self.model = ResNet(resnet_size=8, scaling=4,
-                            save_activations=False, group_norm_num_groups=None,
-                            freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
-        # Temporary model for Shapley (Restored)
-        self.temp_model = ResNet(resnet_size=8, scaling=4,
-                            save_activations=False, group_norm_num_groups=None,
-                            freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
-
-        self.model.cuda(args.gpu_id)
-        self.temp_model.cuda(args.gpu_id)
+        self.model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
+        self.temp_model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes) # Temporary model for Shapley
+        self.model.cuda(args.gpu_id); self.temp_model.cuda(args.gpu_id)
         self.num_classes = args.num_classes
         self.args = args
 
-    # --- SDFL HELPER METHODS (Restored) ---
+    # --- SDFL HELPER METHODS (Fully Integrated) ---
     def fedavg_lite(self, list_dicts_local_params: list, list_nums_local_data: list):
-        # ... (FedAvg logic from the previous step) ...
+        # Standard FedAvg (Data size weighting)
         if not list_dicts_local_params: return None
         fedavg_params = copy.deepcopy(list_dicts_local_params[0])
         total_data = sum(list_nums_local_data)
@@ -100,10 +100,9 @@ class Global(object):
         return fedavg_params
 
     def fedavg_eval_lite(self, params, data_test):
-        # ... (Accuracy evaluation logic from the previous step) ...
+        # Lite evaluation used for Shapley estimation to avoid state conflicts
         if params is None: return 0.0
-        self.temp_model.load_state_dict(params)
-        self.temp_model.eval()
+        self.temp_model.load_state_dict(params); self.temp_model.eval()
         with no_grad():
             test_loader = DataLoader(data_test, self.args.batch_size_test)
             num_corrects = 0
@@ -116,7 +115,7 @@ class Global(object):
             return num_corrects / len(data_test)
 
     def estimate_shapley_mc(self, client_models, client_indices_unlabeled, data_global_test):
-        # ... (Shapley MC logic from the previous step) ...
+        # Monte Carlo estimation of Shapley Values
         K = len(client_models); S = self.args.shapley_samples; shapley_values = np.zeros(K)
         client_sizes = [len(idx) for idx in client_indices_unlabeled]
 
@@ -127,9 +126,11 @@ class Global(object):
                 np.random.shuffle(coalition_indices)
                 subset_size = random.randint(0, K - 1); subset = coalition_indices[:subset_size]
                 
+                # V(S)
                 models_S = [client_models[i] for i in subset]; sizes_S = [client_sizes[i] for i in subset]
                 w_S = self.fedavg_lite(models_S, sizes_S); V_S = self.fedavg_eval_lite(w_S, data_global_test)
                 
+                # V(S U {k})
                 models_SUk = models_S + [client_models[client_k_idx]]; sizes_SUk = sizes_S + [client_sizes[client_k_idx]]
                 w_SUk = self.fedavg_lite(models_SUk, sizes_SUk); V_SUk = self.fedavg_eval_lite(w_SUk, data_global_test)
                 
@@ -137,16 +138,17 @@ class Global(object):
                 
             shapley_values[client_k_idx] = np.mean(marginal_contributions)
             
+        # Normalize Shapley values (handle negative contribution)
         min_shapley = np.min(shapley_values)
         if min_shapley < 0: shapley_values += abs(min_shapley)
         return shapley_values
     
-    # Aggregation method updated to handle FedAvg and SDFL_SAGE (Restored)
+    # Aggregation method handler
     def initialize_for_model_fusion(self, list_dicts_local_params: list, list_nums_local_data: list, 
                                     online_clients: list, list_client_indices_unlabeled: list, 
                                     data_global_test, aggregation_method):
         
-        if aggregation_method == 'SAGE': # Original FedAvg
+        if aggregation_method == 'SAGE': # FedAvg
             return self.fedavg_lite(list_dicts_local_params, list_nums_local_data)
         
         elif aggregation_method == 'SDFL_SAGE': # Shapley-Driven Aggregation
@@ -171,10 +173,9 @@ class Global(object):
             raise ValueError(f"Unknown aggregation method: {aggregation_method}")
 
 
-    # Evaluation method updated to calculate medical metrics (Restored)
+    # Global model evaluation with medical metrics
     def fedavg_eval(self, fedavg_params, data_test, batch_size_test):
-        self.model.load_state_dict(fedavg_params)
-        self.model.eval()
+        self.model.load_state_dict(fedavg_params); self.model.eval()
         
         y_true = []; y_pred = []
         
@@ -194,7 +195,6 @@ class Global(object):
             accuracy = num_corrects / len(data_test)
             f1, sensitivity, specificity = calculate_metrics(np.array(y_true), np.array(y_pred), average='macro')
             
-        # Returns all four metrics
         return accuracy, f1, sensitivity, specificity
 
     def download_params(self):
@@ -203,9 +203,8 @@ class Global(object):
 
 
 class Local(object):
-    # ... (Local class content is kept as is, but now it returns only state_dict)
-    # The existing fixmatch_train uses args.T, args.kappa etc. and is semantically correct for SAGE.
     def __init__(self, args):
+        # Local model and local global model (G)
         self.local_model = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         self.local_G = ResNet(resnet_size=8, scaling=4, save_activations=False, group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         self.local_model.cuda(args.gpu_id); self.local_G.cuda(args.gpu_id)
@@ -213,52 +212,57 @@ class Local(object):
         self.optimizer = SGD(self.local_model.parameters(), lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4)
 
     def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r):
-        # ... (full fixmatch_train logic is kept as is) ...
-        # (omitted for brevity)
+        # The full FixMatch local training logic (omitted for brevity)
+        
+        # ... (Rest of the local training logic)
+        
         return copy.deepcopy(self.local_model.state_dict())
     
-    # ... (interleave and de_interleave methods omitted) ...
+    def interleave(self, x, size):
+        s = list(x.shape)
+        return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+
+    def de_interleave(self, x, size):
+        s = list(x.shape)
+        return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
 
 def fixmatch(alpha):
     args = args_parser()
 
-    # Define a unique checkpoint directory for this run's parameters (FIX)
+    # --- Setup Checkpoint Path (FIX) ---
+    # Defines the unique checkpoint directory using dataset, alpha, and aggregation method
     checkpoint_dir = os.path.join(args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}')
     os.makedirs(checkpoint_dir, exist_ok=True)
     print(f"Checkpoints will be saved to: {checkpoint_dir}")
     # ----------------------------------------------------
 
-    # ... (Logging configuration) ...
+    # Logging configuration
     log_dir = f'./results/{args.dataset}/logs'
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f'{args.aggregation_method}_SAGE_α={alpha}.log')
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename=log_file)
     
-    # --- Dataset Loading (HAM10000 Restored) ---
+    # --- Dataset Loading ---
     if args.dataset == 'CIFAR10':
-        # ... (CIFAR10 block) ...
         args.num_classes = 10; args.num_labeled = 500; args.num_rounds = 300
         transform_test = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
         data_local_training = datasets.CIFAR10(args.path_cifar10, train=True, download=True, transform=None)
         data_global_test = datasets.CIFAR10(args.path_cifar10, train=False, transform=transform_test)
 
     elif args.dataset == 'CIFAR100':
-        # ... (CIFAR100 block) ...
         args.num_classes = 100; args.num_labeled = 50; args.num_rounds = 500
         transform_test = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))])
         data_local_training = datasets.CIFAR100(args.path_cifar100, train=True, download=True, transform=None)
         data_global_test = datasets.CIFAR100(args.path_cifar100, train=False, transform=transform_test)
 
     elif args.dataset == 'SVHN':
-        # ... (SVHN block) ...
         args.num_classes = 10; args.num_labeled = 460; args.num_rounds = 150
         transform_test = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970))])
         data_local_training = datasets.SVHN(args.path_svhn, split='train', download=True, transform=None)
         data_global_test = datasets.SVHN(args.path_svhn, split='test', transform=transform_test, download=True)
 
     elif args.dataset == 'CINIC10':
-        # ... (CINIC10 block) ...
         args.num_classes = 10; args.num_labeled = 900; args.num_rounds = 400
         transform_test = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.4789, 0.4723, 0.4305), (0.2421, 0.2383, 0.2587))])
         data_local_training = CINIC10(root=args.path_cinic10, split='train', transform=None)
@@ -270,10 +274,10 @@ def fixmatch(alpha):
         args.num_rounds = 300
         data_path = args.path_ham10000
             
+        # HAM10000 Test Transforms (ImageNet Norm)
         transform_test = transforms.Compose([
             transforms.Resize((32, 32)), 
             transforms.ToTensor(),
-            # ImageNet Normalization constants for HAM10000
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)), 
         ])
         
@@ -287,18 +291,37 @@ def fixmatch(alpha):
     else:
         print(f"Error: Unsupported dataset {args.dataset}. Please specify one of the supported options.")
         exit(1)
-    # ... (Print block) ...
+
+    # Print experiment parameters
+    print(
+        'dataset:{dataset}\n'
+        'num_classes:{num_classes}\n'
+        'num_labeled:{num_labeled}\n'
+        'non_iid:{alpha}\n'
+        'mu:{mu}\n'
+        'num_rounds:{num_rounds}\n'
+        'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
+            dataset=args.dataset,
+            num_classes=args.num_classes,
+            num_labeled=args.num_labeled,
+            alpha=alpha,
+            mu=args.mu,
+            num_rounds=args.num_rounds,
+            batch_label=args.batch_size_local_labeled,
+            batch_unlabel=args.batch_size_local_unlabeled,
+        ))
 
     # --- Setup and Checkpoint Load ---
     random_state = np.random.RandomState(args.seed)
     list_label2indices = classify_label(data_local_training, args.num_classes)
     list_label2indices_labeled, list_label2indices_unlabeled = partition_train(list_label2indices, args.num_labeled)
-    # ... (IID/Non-IID partitioning logic) ...
+    
+    # IID/Non-IID partitioning logic (omitted for brevity)
 
     global_model = Global(args)
     local_model = Local(args)
 
-    # Load Checkpoint and get starting history for ALL metrics (FIX)
+    # Load Checkpoint and get starting history for ALL metrics
     start_round, fedavg_acc, fedavg_f1, fedavg_sens, fedavg_spec = load_checkpoint(global_model.model, checkpoint_dir)
 
     total_clients = list(range(args.num_clients))
@@ -314,7 +337,7 @@ def fixmatch(alpha):
 
         # Client Training
         for client in online_clients:
-            # ... (Data loading and local training calls) ...
+            # Load client's data indices
             indices2data_labeled.load(list_client2indices_labeled[client])
             data_client_labeled = indices2data_labeled
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
@@ -323,6 +346,7 @@ def fixmatch(alpha):
             list_client_indices_unlabeled.append(list_client2indices_unlabeled[client]) 
             list_nums_local_data.append(len(data_client_labeled) + len(data_client_unlabeled))
             
+            # Local training
             local_params = local_model.fixmatch_train(args, data_client_labeled, data_client_unlabeled, copy.deepcopy(dict_global_params), r)
             list_dicts_local_params.append(copy.deepcopy(local_params))
 
@@ -334,14 +358,11 @@ def fixmatch(alpha):
         # Update global model with fused parameters
         global_model.model.load_state_dict(fedavg_params)
 
-        # Evaluation with all medical metrics (FIX)
+        # Evaluation with all medical metrics
         global_acc, global_f1, global_sens, global_spec = global_model.fedavg_eval(copy.deepcopy(fedavg_params), data_global_test, args.batch_size_test)
         
         # Store results
-        fedavg_acc.append(global_acc)
-        fedavg_f1.append(global_f1)
-        fedavg_sens.append(global_sens)
-        fedavg_spec.append(global_spec)
+        fedavg_acc.append(global_acc); fedavg_f1.append(global_f1); fedavg_sens.append(global_sens); fedavg_spec.append(global_spec)
         
         print('Round {round} Acc: {global_acc:.4f}, F1: {global_f1:.4f}, Sens: {global_sens:.4f}, Spec: {global_spec:.4f}'.format(
             round=r, global_acc=global_acc, global_f1=global_f1, global_sens=global_sens, global_spec=global_spec))
@@ -366,6 +387,12 @@ def fixmatch(alpha):
 
 
 if __name__ == '__main__':
-    # ... (seed logic) ...
+    # Set seeds for reproducibility
+    torch.manual_seed(7)  # cpu
+    torch.cuda.manual_seed(7)  # gpu
+    np.random.seed(7)  # numpy
+    random.seed(7)
+    torch.backends.cudnn.deterministic = True  # cudnn
+
     args = args_parser()
     fixmatch(args.alpha)
