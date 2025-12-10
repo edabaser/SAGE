@@ -20,10 +20,7 @@ from torch.utils.data import DataLoader, RandomSampler
 import logging
 import os
 
-# Google Drive Checkpoint Settings
-# The SAVE_PATH here must match the one in the Colab cell.
-# Example: /content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints
-SAVE_PATH = '/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints'
+worker_num = 4
 
 
 class Global(object):
@@ -36,7 +33,7 @@ class Global(object):
         self.num_classes = args.num_classes
 
     def initialize_for_model_fusion(self, list_dicts_local_params: list, list_nums_local_data: list):
-        # FedAvg implementation
+        # FedAvg
         fedavg_global_params = copy.deepcopy(list_dicts_local_params[0])
         for name_param in list_dicts_local_params[0]:
             list_values_param = []
@@ -72,7 +69,6 @@ class Local(object):
                                   save_activations=False, group_norm_num_groups=None,
                                   freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
 
-
         self.local_G = ResNet(resnet_size=8, scaling=4,
                               save_activations=False, group_norm_num_groups=None,
                               freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
@@ -81,7 +77,6 @@ class Local(object):
         self.local_G.cuda(args.gpu_id)
 
         self.criterion = CrossEntropyLoss().cuda(args.gpu_id)
-        # Optimizer is initialized here, but recreated in a common FixMatch pattern for each round.
         self.optimizer = SGD(self.local_model.parameters(), lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4)
 
     def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r):
@@ -91,7 +86,7 @@ class Local(object):
             sampler=RandomSampler(data_client_labeled),
             batch_size=args.batch_size_local_labeled_fixmatch,
             drop_last=True,
-            num_workers = 2,
+            num_workers=2,
             pin_memory=True
         )
 
@@ -104,13 +99,11 @@ class Local(object):
             pin_memory=True
         )
 
-        # Load the global model parameters for local training start
         self.local_model.load_state_dict(global_params)
         self.local_model.train()
 
         self.local_G.load_state_dict(global_params)
         self.local_G.eval()
-
 
         # default: E = 5
         for local_epoch in range(args.local_epochs):
@@ -134,11 +127,13 @@ class Local(object):
                     unlabeled_iter = iter(self.unlabeled_trainloader)
                     inputs_u_w, inputs_u_s, targets_u_groundtruth = unlabeled_iter.__next__()
 
-                inputs_x, inputs_u_w, inputs_u_s = inputs_x.cuda(args.gpu_id), inputs_u_w.cuda(args.gpu_id), inputs_u_s.cuda(args.gpu_id)
+                inputs_x, inputs_u_w, inputs_u_s = inputs_x.cuda(args.gpu_id), inputs_u_w.cuda(
+                    args.gpu_id), inputs_u_s.cuda(args.gpu_id)
 
                 batch_size = inputs_x.shape[0]
                 inputs = self.interleave(
-                    torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1).cuda(args.gpu_id)
+                    torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1).cuda(
+                    args.gpu_id)  # Combine labeled and unlabeled data
                 targets_x = targets_x.cuda(args.gpu_id)
 
                 # local logits
@@ -151,19 +146,22 @@ class Local(object):
 
                 Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
-
                 # global pseudo-labeling
                 _, logits_u_w_global = self.local_G(inputs_u_w.cuda(args.gpu_id))
                 pseudo_label_global = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
                 max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
 
                 # local pseudo-labeling
+                _, logits_u_w_local_out = self.local_model(inputs_u_w) # Ensure we get output from local model
+                # Note: In original code logic, logits_u_w was already computed from 'inputs'.
+                # Re-using previous logits_u_w is fine, but typically we detach.
+                # Assuming logits_u_w from line 134 corresponds to inputs_u_w weak.
+                
                 pseudo_label_local = torch.softmax(logits_u_w.detach() / args.T, dim=-1)
                 max_probs_local, targets_u_local = torch.max(pseudo_label_local, dim=-1)
 
                 targets_u_local_one_hot = F.one_hot(targets_u_local, args.num_classes).float()
                 targets_u_global_one_hot = F.one_hot(targets_u_global, args.num_classes).float()
-
 
                 mask_local = max_probs_local.ge(args.threshold).float()
                 mask_global = max_probs_global.ge(args.threshold).float()
@@ -173,34 +171,28 @@ class Local(object):
                 delta_c = torch.clamp(delta_c, min=1e-6, max=1.0)
 
                 # Confidence-Driven Soft Correction
-                # Set sensitivity parameter kappa
-                # Ensure lambda_dynamic = 0.5 when delta_p = 0.05
-                # kappa = log(2) / 0.05 based on the formula lambda_dynamic = exp(-kappa * delta_p)
                 kappa = torch.log(torch.tensor(2.0)) / 0.05  # calculate kappa
                 lambda_dynamic = torch.exp(-kappa * delta_c)
                 lambda_dynamic = torch.clamp(lambda_dynamic, min=1e-6, max=1.0)
 
                 final_targets_u = torch.where(
                     mask_local.unsqueeze(1).bool(),
-                    lambda_dynamic.unsqueeze(1) * targets_u_local_one_hot + (1-lambda_dynamic).unsqueeze(1) * targets_u_global_one_hot,
+                    lambda_dynamic.unsqueeze(1) * targets_u_local_one_hot + (1 - lambda_dynamic).unsqueeze(
+                        1) * targets_u_global_one_hot,  # Dynamic pseudo-label correction
                     targets_u_global_one_hot
                 )
 
                 mask_valid = torch.max(mask_local, mask_global)
 
-                logits_u_s_probs = torch.softmax(logits_u_s, dim=-1)
-
                 logits_u_s_probs = torch.softmax(logits_u_s, dim=-1) + 1e-10
                 final_targets_u = final_targets_u + 1e-10
                 Lu = (F.kl_div(logits_u_s_probs.log(), final_targets_u, reduction='none').sum(-1) * mask_valid).mean()
-
 
                 loss = Lx + args.lambda_u * Lu
 
                 # logging
                 logging.info(
                     f'Round {r}, Local Epoch {local_epoch}, Batch {epoch}: Lx = {Lx.item():.4f}, Lu = {Lu.item():.4f}, lambda_dynamic = {lambda_dynamic[0].item():.4f}')
-
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -215,62 +207,30 @@ class Local(object):
         s = list(x.shape)
         return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
-# --- CHECKPOINT AND LOADING FUNCTIONS ---
-
-def save_checkpoint(filename, model_state_dict, optimizer_state_dict, round_num, fedavg_acc):
-    """Saves the training state to a file."""
-    torch.save({
-        'round': round_num,
-        'model_state_dict': model_state_dict,
-        'optimizer_state_dict': optimizer_state_dict,
-        'fedavg_acc': fedavg_acc,
-    }, filename)
-    print(f"\n🚀 Checkpoint saved. Round: {round_num}")
-
-def load_checkpoint(filename, model, optimizer):
-    """Loads the saved training state and returns the round number and accuracy history."""
-    if os.path.exists(filename):
-        print(f"\n✅ Checkpoint found and loading: {filename}")
-        try:
-            checkpoint = torch.load(filename, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-            model.model.load_state_dict(checkpoint['model_state_dict'])
-
-            # The optimizer state should normally be loaded here, but since Local.optimizer is recreated locally in every round
-            # (a common practice in FixMatch), we only load the Global model and history.
-            # The Local model/optimizer is updated just before starting local training.
-            # That's why we only load the Global model state.
-            start_round = checkpoint['round'] + 1
-            fedavg_acc = checkpoint['fedavg_acc']
-            print(f"✅ Successfully loaded. Continuing training from Round {start_round}.")
-            return start_round, fedavg_acc
-        except Exception as e:
-            print(f"❌ An error occurred while loading the checkpoint ({e}). Restarting from the beginning.")
-            return 1, []
-    print("\n⚠️ Checkpoint not found. Starting training from Round 1.")
-    return 1, []
-
-# --- MAIN TRAINING LOOP (fixmatch) ---
 
 def fixmatch(alpha):
-
     args = args_parser()
 
-    # Setting up Log and Checkpoint directories
+    # --- Setup Logging ---
     log_dir = f'./results/{args.dataset}/logs'
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, 'SAGE α={alpha}.log'.format(alpha = alpha))
-
-    # Checkpoint directory: DATASET_aALPHA
-    checkpoint_dir = os.path.join(SAVE_PATH, f'{args.dataset}_a{alpha}')
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_file = os.path.join(checkpoint_dir, 'checkpoint.pt')
-
+    log_file = os.path.join(log_dir, 'SAGE α={alpha}.log'.format(alpha=alpha))
 
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s',
                         filename=log_file
                         )
 
+    # --- Setup Checkpoint Directory ---
+    # Define the specific path for checkpoints on Google Drive
+    drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/ SAGE-master.v1/Checkpoints'
+    checkpoint_dir = os.path.join(drive_checkpoint_base, f'{args.dataset}_alpha={args.alpha}')
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
+    
+    print(f"Checkpoint directory set to: {checkpoint_dir}")
+
+    # --- Data Preparation ---
     if args.dataset == 'CIFAR10':
         args.num_classes = 10
         args.num_labeled = 500
@@ -283,7 +243,6 @@ def fixmatch(alpha):
         data_global_test = datasets.CIFAR10(args.path_cifar10, train=False, transform=transform_test)
 
     elif args.dataset == 'CIFAR100':
-        # ... (dataset configuration remains the same)
         args.num_classes = 100
         args.num_labeled = 50
         args.num_rounds = 500
@@ -294,9 +253,7 @@ def fixmatch(alpha):
         data_local_training = datasets.CIFAR100(args.path_cifar100, train=True, download=True, transform=None)
         data_global_test = datasets.CIFAR100(args.path_cifar100, train=False, transform=transform_test)
 
-
     elif args.dataset == 'SVHN':
-        # ... (dataset configuration remains the same)
         args.num_classes = 10
         args.num_labeled = 460
         args.num_rounds = 150
@@ -308,7 +265,6 @@ def fixmatch(alpha):
         data_global_test = datasets.SVHN(args.path_svhn, split='test', transform=transform_test, download=True)
 
     elif args.dataset == 'CINIC10':
-        # ... (dataset configuration remains the same)
         args.num_classes = 10
         args.num_labeled = 900
         args.num_rounds = 400
@@ -320,43 +276,143 @@ def fixmatch(alpha):
         data_global_test = CINIC10(root=args.path_cinic10, split='test', transform=transform_test)
 
     else:
-        print(
-            f"Error: Unsupported dataset {args.dataset}. Please specify one of the following: CIFAR10, CIFAR100, CINIC10 or SVHN.")
+        print(f"Error: Unsupported dataset {args.dataset}. Please specify one of the following: CIFAR10, CIFAR100, CINIC10 or SVHN.")
         exit(1)
 
     print(
-
         'dataset:{dataset}\n'
-
         'num_classes:{num_classes}\n'
-
         'num_labeled:{num_labeled}\n'
-
         'non_iid:{alpha}\n'
-
         'mu:{mu}\n'
-
         'num_rounds:{num_rounds}\n'
-
         'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
-
             dataset=args.dataset,
-
             num_classes=args.num_classes,
-
             num_labeled=args.num_labeled,
-
             alpha=alpha,
-
             mu=args.mu,
-
             num_rounds=args.num_rounds,
-
             batch_label=args.batch_size_local_labeled,
-
             batch_unlabel=args.batch_size_local_unlabeled,
-
         ))
 
+    random_state = np.random.RandomState(args.seed)
+
+    list_label2indices = classify_label(data_local_training, args.num_classes)
+    list_label2indices_labeled, list_label2indices_unlabeled = partition_train(list_label2indices, args.num_labeled)
+
+    # IID
+    if alpha == 0:
+        list_client2indices_labeled = clients_indices_homo(list_label2indices=list_label2indices_labeled,
+                                                           num_classes=args.num_classes,
+                                                           num_clients=args.num_clients)
+        list_client2indices_unlabeled = clients_indices_homo(list_label2indices=list_label2indices_unlabeled,
+                                                             num_classes=args.num_classes,
+                                                             num_clients=args.num_clients)
+    # Non-IID
+    else:
+        list_client2indices_labeled = clients_indices(list_label2indices=list_label2indices_labeled,
+                                                      num_classes=args.num_classes,
+                                                      num_clients=args.num_clients, non_iid_alpha=alpha, seed=0)
+        list_client2indices_unlabeled = clients_indices(list_label2indices=list_label2indices_unlabeled,
+                                                        num_classes=args.num_classes,
+                                                        num_clients=args.num_clients, non_iid_alpha=alpha, seed=0)
+
+    # Show data distribubution
+    show_clients_data_distribution(data_local_training, list_client2indices_labeled,
+                                   list_client2indices_unlabeled, args.num_classes)
+
+    # add labeled samples without labels into the unlabeled dataset
+    for client in range(args.num_clients):
+        list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
+
+    global_model = Global(args)
+    local_model = Local(args)
+
+    total_clients = list(range(args.num_clients))
+
+    indices2data_labeled = Indices2Dataset_labeled(data_local_training)
+    indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
+
+    fedavg_acc = []
+    start_round = 1
+
+    # --- Check for Existing Checkpoint ---
+    if os.path.exists(checkpoint_path):
+        print(f"--> Found checkpoint at {checkpoint_path}. Loading...")
+        try:
+            checkpoint = torch.load(checkpoint_path)
+            # Load global model weights
+            global_model.model.load_state_dict(checkpoint['global_state_dict'])
+            # Load accuracy history
+            fedavg_acc = checkpoint['fedavg_acc']
+            # Determine starting round
+            start_round = checkpoint['round'] + 1
+            print(f"--> Resumed successfully from Round {start_round - 1}. Accuracy history restored.")
+        except Exception as e:
+            print(f"--> Error loading checkpoint: {e}. Starting from scratch.")
+    else:
+        print(f"--> No checkpoint found at {checkpoint_path}. Starting training from scratch.")
+
+    # FL training
+    # Adjusted range to start from start_round
+    for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
+
+        dict_global_params = global_model.download_params()
+
+        online_clients = random_state.choice(total_clients, args.num_online_clients, replace=False)
+        list_dicts_local_params = []
+        list_nums_local_data = []
+
+        # client training
+        for client in online_clients:
+            indices2data_labeled.load(list_client2indices_labeled[client])
+            data_client_labeled = indices2data_labeled
+            indices2data_unlabeled.load(list_client2indices_unlabeled[client])
+            data_client_unlabeled = indices2data_unlabeled
+
+            list_nums_local_data.append(len(data_client_labeled) + len(data_client_unlabeled))
+            local_params = local_model.fixmatch_train(args, data_client_labeled, data_client_unlabeled,
+                                                      copy.deepcopy(dict_global_params), r)
+            list_dicts_local_params.append(copy.deepcopy(local_params))
+
+        fedavg_params = global_model.initialize_for_model_fusion(list_dicts_local_params, list_nums_local_data)
+
+        global_acc = global_model.fedavg_eval(copy.deepcopy(fedavg_params), data_global_test, args.batch_size_test)
+        fedavg_acc.append(global_acc)
+        print('round {round} accuracy:{global_acc}'.format(
+            round=r,
+            global_acc=global_acc))
+
+        # --- Save Checkpoint (End of Round) ---
+        checkpoint_state = {
+            'round': r,
+            'global_state_dict': global_model.download_params(),
+            'fedavg_acc': fedavg_acc
+        }
+        torch.save(checkpoint_state, checkpoint_path)
+        # -------------------------------------
+
+        result_dir = f'./results/{args.dataset}'
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f'{result_dir}/SAGE α={alpha}.csv'
+        
+        # When resuming, fedavg_acc contains all previous history, so this CSV generation remains correct
+        acc_num_pseudo_label_csv_col_name = ['acc', 'num_pseudo_label']
+        acc_num_pseudo_label_csv_index = list(range(1, len(fedavg_acc) + 1))
+        acc_num_pseudo_label_csv_df = pd.DataFrame({'acc': fedavg_acc}, index=acc_num_pseudo_label_csv_index)
+        # Save file
+        acc_num_pseudo_label_csv_df.to_csv(result_file, encoding='utf8')
 
 
+if __name__ == '__main__':
+
+    torch.manual_seed(7)  # cpu
+    torch.cuda.manual_seed(7)  # gpu
+    np.random.seed(7)  # numpy
+    random.seed(7)
+    torch.backends.cudnn.deterministic = True  # cudnn
+
+    args = args_parser()
+    fixmatch(args.alpha)
