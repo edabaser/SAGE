@@ -238,31 +238,31 @@ def fixmatch(alpha):
     start_round = 1
 
     # --- RESUME LOGIC ---
-if os.path.exists(checkpoint_path):
-        print(f"--> Found checkpoint at {checkpoint_path}. Loading...")
-        try:
-            checkpoint = torch.load(checkpoint_path)
-            
-            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                global_model.model.load_state_dict(checkpoint['model_state_dict'])
-                fedavg_acc = checkpoint['fedavg_acc']
-                start_round = checkpoint['round'] + 1
+    if os.path.exists(checkpoint_path):
+            print(f"--> Found checkpoint at {checkpoint_path}. Loading...")
+            try:
+                checkpoint = torch.load(checkpoint_path)
                 
-                print(f"--> Resumed successfully from Round {start_round - 1}.")
-                if len(fedavg_acc) > 0:
-                    print(f"--> Last Round Accuracy: {fedavg_acc[-1]}")
-                    print(f"--> Last 5 Accuracies: {fedavg_acc[-5:]}")
-            
-            else:
-                global_model.model.load_state_dict(checkpoint)
-                print("--> Loaded model weights from legacy checkpoint.")
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    global_model.model.load_state_dict(checkpoint['model_state_dict'])
+                    fedavg_acc = checkpoint['fedavg_acc']
+                    start_round = checkpoint['round'] + 1
+                    
+                    print(f"--> Resumed successfully from Round {start_round - 1}.")
+                    if len(fedavg_acc) > 0:
+                        print(f"--> Last Round Accuracy: {fedavg_acc[-1]}")
+                        print(f"--> Last 5 Accuracies: {fedavg_acc[-5:]}")
                 
-        except Exception as e:
-            print(f"--> Error loading checkpoint: {e}")
-            print("--> Starting from scratch due to error.")
-    else:
-        print(f"--> No checkpoint found at {checkpoint_path}. Starting training from scratch.")
-        
+                else:
+                    global_model.model.load_state_dict(checkpoint)
+                    print("--> Loaded model weights from legacy checkpoint.")
+                    
+            except Exception as e:
+                print(f"--> Error loading checkpoint: {e}")
+                print("--> Starting from scratch due to error.")
+        else:
+            print(f"--> No checkpoint found at {checkpoint_path}. Starting training from scratch.")
+            
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         dict_global_params = global_model.download_params()
         online_clients = random_state.choice(total_clients, args.num_online_clients, replace=False)
@@ -301,5 +301,6 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     args = args_parser()
     fixmatch(args.alpha)
+
 
 
