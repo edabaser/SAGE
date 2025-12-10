@@ -410,7 +410,7 @@ def fixmatch(alpha):
         # --- Save Checkpoint (End of Round) ---
         checkpoint_state = {
             'round': r,
-            'global_state_dict': global_model.download_params(),
+            'model_state_dict': global_model.download_params(),
             'fedavg_acc': fedavg_acc
         }
         torch.save(checkpoint_state, checkpoint_path)
@@ -438,6 +438,7 @@ if __name__ == '__main__':
 
     args = args_parser()
     fixmatch(args.alpha)
+
 
 
 
