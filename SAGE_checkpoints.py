@@ -233,23 +233,21 @@ def fixmatch(alpha):
     drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints'
     
     # 1. Define the possible folder names
-    folder_name_old_style = f'{args.dataset}_a{args.alpha}'       # e.g., CIFAR10_a0.1
-    folder_name_new_style = f'{args.dataset}_alpha={args.alpha}'  # e.g., CIFAR10_alpha=0.1
+    folder_name = f'{args.dataset}_a{args.alpha}'       # e.g., CIFAR10_a0.1
+    
+    full_path= os.path.join(drive_checkpoint_base, folder_name)
 
-    full_path_old = os.path.join(drive_checkpoint_base, folder_name_old_style)
-    full_path_new = os.path.join(drive_checkpoint_base, folder_name_new_style)
-
-    # 2. Check if the old style folder exists
-    if os.path.exists(full_path_old):
-        checkpoint_dir = full_path_old
+    # 2. Check if the folder exists
+    if os.path.exists(full_path):
+        checkpoint_dir = full_path
         print(f"--> Found existing directory: {checkpoint_dir}")
     else:
-        # If old doesn't exist, use the new style (or create it if neither exists)
-        checkpoint_dir = full_path_new
+        # If it doesn't exist(or create it if neither exists)
+        checkpoint_dir = full_path
         os.makedirs(checkpoint_dir, exist_ok=True)
-        print(f"--> Directory set to (new created or existing): {checkpoint_dir}")
+        print(f"--> Directory set to: {checkpoint_dir}")
 
-    checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
+    checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pt')
     # --- CHECKPOINT PATH CONFIGURATION END ---
 
 
@@ -440,5 +438,6 @@ if __name__ == '__main__':
 
     args = args_parser()
     fixmatch(args.alpha)
+
 
 
