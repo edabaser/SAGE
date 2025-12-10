@@ -260,8 +260,8 @@ def fixmatch(alpha):
             except Exception as e:
                 print(f"--> Error loading checkpoint: {e}")
                 print("--> Starting from scratch due to error.")
-        else:
-            print(f"--> No checkpoint found at {checkpoint_path}. Starting training from scratch.")
+    else:
+        print(f"--> No checkpoint found at {checkpoint_path}. Starting training from scratch.")
             
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         dict_global_params = global_model.download_params()
@@ -301,6 +301,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     args = args_parser()
     fixmatch(args.alpha)
+
 
 
 
