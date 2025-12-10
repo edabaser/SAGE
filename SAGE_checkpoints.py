@@ -1,4 +1,3 @@
-%%writefile SAGE_checkpoints.py
 from torchvision import datasets
 from torchvision.transforms import transforms
 from options import args_parser
@@ -300,3 +299,4 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     args = args_parser()
     fixmatch(args.alpha)
+
