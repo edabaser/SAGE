@@ -223,7 +223,7 @@ def fixmatch(alpha):
 
     # --- Setup Checkpoint Directory ---
     # Define the specific path for checkpoints on Google Drive
-    drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/ SAGE-master.v1/Checkpoints'
+    drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints'
     checkpoint_dir = os.path.join(drive_checkpoint_base, f'{args.dataset}_alpha={args.alpha}')
     os.makedirs(checkpoint_dir, exist_ok=True)
     checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
@@ -416,3 +416,4 @@ if __name__ == '__main__':
 
     args = args_parser()
     fixmatch(args.alpha)
+
