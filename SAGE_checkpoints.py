@@ -221,15 +221,39 @@ def fixmatch(alpha):
                         filename=log_file
                         )
 
-    # --- Setup Checkpoint Directory ---
-    # Define the specific path for checkpoints on Google Drive
-    drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints'
-    checkpoint_dir = os.path.join(drive_checkpoint_base, f'{args.dataset}_alpha={args.alpha}')
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
+    # # --- Setup Checkpoint Directory ---
+    # # Define the specific path for checkpoints on Google Drive
+    # drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints'
+    # checkpoint_dir = os.path.join(drive_checkpoint_base, f'{args.dataset}_alpha={args.alpha}')
+    # os.makedirs(checkpoint_dir, exist_ok=True)
+    # checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
     
-    print(f"Checkpoint directory set to: {checkpoint_dir}")
+    # print(f"Checkpoint directory set to: {checkpoint_dir}")
+# --- CHECKPOINT PATH CONFIGURATION START ---
+    drive_checkpoint_base = '/content/drive/MyDrive/Colab Notebooks/EE 401/SAGE-master.v1/Checkpoints'
+    
+    # 1. Define the possible folder names
+    folder_name_old_style = f'{args.dataset}_a{args.alpha}'       # e.g., CIFAR10_a0.1
+    folder_name_new_style = f'{args.dataset}_alpha={args.alpha}'  # e.g., CIFAR10_alpha=0.1
 
+    full_path_old = os.path.join(drive_checkpoint_base, folder_name_old_style)
+    full_path_new = os.path.join(drive_checkpoint_base, folder_name_new_style)
+
+    # 2. Check if the old style folder exists
+    if os.path.exists(full_path_old):
+        checkpoint_dir = full_path_old
+        print(f"--> Found existing directory: {checkpoint_dir}")
+    else:
+        # If old doesn't exist, use the new style (or create it if neither exists)
+        checkpoint_dir = full_path_new
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        print(f"--> Directory set to (new created or existing): {checkpoint_dir}")
+
+    checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
+    # --- CHECKPOINT PATH CONFIGURATION END ---
+
+
+    
     # --- Data Preparation ---
     if args.dataset == 'CIFAR10':
         args.num_classes = 10
@@ -416,4 +440,5 @@ if __name__ == '__main__':
 
     args = args_parser()
     fixmatch(args.alpha)
+
 
