@@ -251,7 +251,7 @@ def fixmatch(alpha):
                     print(f"--> Resumed successfully from Round {start_round - 1}.")
                     if len(fedavg_acc) > 0:
                         print(f"--> Last Round Accuracy: {fedavg_acc[-1]}")
-                        print(f"--> Last 5 Accuracies: {fedavg_acc[-15:]}")
+                        print(f"--> Last 5 Accuracies: {fedavg_acc[-55:]}")
                 
                 else:
                     global_model.model.load_state_dict(checkpoint)
@@ -301,6 +301,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     args = args_parser()
     fixmatch(args.alpha)
+
 
 
 
