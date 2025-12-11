@@ -13,10 +13,6 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, RandomSampler
 from itertools import combinations
 import math
-
-# --- Placeholder Imports (Actual files needed to run) ---
-# NOTE: These imports assume you have Dataset/dataset.py, Dataset/sample_dirichlet.py,
-# Dataset/CINIC10.py, Model/resnet.py, options.py, and appropriate data/ transforms.
 from torchvision import datasets
 from torchvision.transforms import transforms
 from options import args_parser # Assumed to have been updated with ShapFed arguments
@@ -25,7 +21,6 @@ from Dataset.dataset import classify_label, show_clients_data_distribution, Indi
 from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
 from Model.resnet import ResNet # Assumed to be your ResNet class (for SAGE)
 from Dataset.CINIC10 import CINIC10 # Included for dataset handling
-# --------------------------------------------------------
 
 # --- Utility Functions for Checkpoints and Shapley ---
 
