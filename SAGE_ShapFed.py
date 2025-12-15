@@ -434,19 +434,14 @@
 #     log_file = os.path.join(log_dir, f'SAGE-ShapFed_{args.aggregation_method}_α={alpha}.log')
 #     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename=log_file)
     
-#     # Dataset Configuration (Simplified for HAM10000 integration)
-#     if args.dataset == 'HAM10000':
-#         # NOTE: You need to implement HAM10000 data loading, transforms, and splits.
-#         # This is a placeholder section.
-#         args.num_classes = 7 # Assuming 7 classes for HAM10000
-#         args.num_labeled = 1000 # Example value
-#         args.num_rounds = 200 # Example value
-        
-#         # NOTE: Implement appropriate transforms for HAM10000 images
-#         transform_test = transforms.Compose([
-#             transforms.ToTensor(),
-#             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) # Placeholder Normalize
-#         ])
+    # # Dataset Configuration
+    # if args.dataset == 'HAM10000':
+    #     # NOTE: You need to implement HAM10000 data loading, transforms, and splits.
+    #     args.num_classes = 7
+    #     args.num_labeled = 1000 
+    #     args.num_rounds = 400
+
+
         
 #         # Placeholder for data loading - Replace with actual HAM10000 loading
 #         print("⚠️ NOTE: HAM10000 data loading and preprocessing must be implemented in Dataset/dataset.py and relevant files.")
@@ -585,10 +580,8 @@ from torch.utils.data import DataLoader, RandomSampler
 import logging
 import os
 
-# --- YARDIMCI FONKSİYONLAR (Checkpoint & ShapFed) ---
 
 def save_checkpoint(round_num, model_state, fedavg_acc_history, checkpoint_dir, filename='checkpoint.pt'):
-    """Model durumunu ve geçmişini Drive'a kaydeder."""
     os.makedirs(checkpoint_dir, exist_ok=True)
     state = {
         'round': round_num,
@@ -600,7 +593,6 @@ def save_checkpoint(round_num, model_state, fedavg_acc_history, checkpoint_dir, 
     print(f"\n[SAGE] Checkpoint saved at Round {round_num} to {filepath}")
 
 def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
-    """Varsa checkpoint yükler, yoksa sıfırdan başlatır."""
     filepath = os.path.join(checkpoint_dir, filename)
     if os.path.exists(filepath):
         print(f"\n[SAGE] Checkpoint found at {filepath}. Loading...")
@@ -884,8 +876,8 @@ def main_loop(alpha):
     # Dataset Loaders (Örnek: CIFAR10, diğerleri options'a göre genişletilebilir)
     if args.dataset == 'CIFAR10':
         args.num_classes = 10
-        args.num_labeled = 500 # Default label sayısı
-        args.num_rounds = 200  # Default round sayısı
+        args.num_labeled = 500 
+        args.num_rounds = 400 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
