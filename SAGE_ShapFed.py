@@ -610,93 +610,209 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
         print("[SAGE] No checkpoint found. Starting from Round 1.")
         return 1, []
 
+# def compute_cssv(args, local_models_params, initial_global_params):
+#     """
+#     ShapFed: Class-Specific Shapley Values (CSSV) Calculation.
+#     measure the cosine similarity between coalition update and clietn's model updates 
+#     (weights - global_weights).
+#     """
+#     num_clients = len(local_models_params)
+#     if num_clients == 0:
+#         return np.array([])
+    
+#     # SAGE ResNet modelinde son katman 'classifier' olarak tanımlı
+#     weight_layer = 'classifier.weight'
+#     bias_layer = 'classifier.bias'
+    
+#     # 1. Her istemcinin 'Model Update'ini (Delta W) hesapla
+#     # Update = Local_Weights - Global_Weights
+#     client_updates = []
+#     for local_params in local_models_params:
+#         update = {}
+#         for name in local_params:
+#             if name in initial_global_params:
+#                 # GPU üzerinde işlem yap
+#                 update[name] = local_params[name] - initial_global_params[name].to(local_params[name].device)
+#         client_updates.append(update)
+
+#     shapley_values = np.zeros(num_clients)
+#     num_samples = args.shapley_samples # Monte Carlo örnek sayısı (Örn: 10)
+    
+#     # 2. Monte Carlo Shapley Hesaplaması
+#     for _ in range(num_samples):
+#         permutation = np.random.permutation(num_clients)
+        
+#         for i, client_idx in enumerate(permutation):
+#             # Koalisyon: Permütasyonda bu istemciden öncekiler
+#             coalition_indices = permutation[:i]
+#             # Koalisyon + İstemci
+#             coalition_plus_indices = permutation[:i+1]
+            
+#             # Koalisyonun birleşik güncellemesini hesapla (Basit Ortalaması)
+#             # ShapFed mantığında gradyan/update benzerliği esastır.
+            
+#             # Mevcut istemcinin son katman update'i
+#             curr_update_w = torch.cat([
+#                 client_updates[client_idx][weight_layer].view(-1),
+#                 client_updates[client_idx][bias_layer].view(-1)
+#             ])
+            
+#             # Koalisyon + İstemci'nin ortalama update'i (Aggregated Update)
+#             agg_update_w = torch.zeros_like(curr_update_w)
+            
+#             if len(coalition_plus_indices) > 0:
+#                 temp_w = torch.zeros_like(client_updates[0][weight_layer])
+#                 temp_b = torch.zeros_like(client_updates[0][bias_layer])
+                
+#                 for c_idx in coalition_plus_indices:
+#                     temp_w += client_updates[c_idx][weight_layer]
+#                     temp_b += client_updates[c_idx][bias_layer]
+                
+#                 # Ortalamasını al
+#                 temp_w /= len(coalition_plus_indices)
+#                 temp_b /= len(coalition_plus_indices)
+                
+#                 agg_update_w = torch.cat([temp_w.view(-1), temp_b.view(-1)])
+
+#             # Cosine Similarity Hesapla
+#             sim = F.cosine_similarity(curr_update_w.unsqueeze(0), agg_update_w.unsqueeze(0)).item()
+            
+#             # Shapley değerine ekle (Marjinal katkı olarak benzerliği kullanıyoruz)
+#             shapley_values[client_idx] += sim
+
+#     if num_samples > 0:
+#         shapley_values /= num_samples
+
+#     # Değerleri normalize et (Negatifleri temizle ve toplama böl)
+#     shapley_values = np.maximum(shapley_values, 0) # ReLU gibi, negatif katkıyı 0 yap
+#     total_shapley = np.sum(shapley_values)
+    
+#     if total_shapley > 0:
+#         normalized_weights = shapley_values / total_shapley
+#     else:
+#         # Hepsi 0 ise eşit dağıt (FedAvg fallback)
+#         normalized_weights = np.ones(num_clients) / num_clients
+        
+#     return normalized_weights
 def compute_cssv(args, local_models_params, initial_global_params):
     """
-    ShapFed: Class-Specific Shapley Values (CSSV) Calculation.
-    measure the cosine similarity between coalition update and clietn's model updates 
-    (weights - global_weights).
+    ShapFed: Class-Specific Shapley Values (CSSV) Calculation using Monte Carlo.
+    Calculates the Shapley value by summing the marginal contributions 
+    (value_of_coalition_plus_i - value_of_coalition_only).
+    
+    It is expected that 'args' contains the 'shapley_samples' attribute.
     """
     num_clients = len(local_models_params)
     if num_clients == 0:
         return np.array([])
     
-    # SAGE ResNet modelinde son katman 'classifier' olarak tanımlı
+    # The names of the last layer parameters in your ResNet model
     weight_layer = 'classifier.weight'
     bias_layer = 'classifier.bias'
     
-    # 1. Her istemcinin 'Model Update'ini (Delta W) hesapla
-    # Update = Local_Weights - Global_Weights
+    # 1. Calculate the 'Model Update' (Delta W = Local_Weights - Global_Weights) for each client
     client_updates = []
     for local_params in local_models_params:
         update = {}
         for name in local_params:
             if name in initial_global_params:
-                # GPU üzerinde işlem yap
+                # Calculate the update: W_local - W_global_start
+                # Ensure device compatibility for subtraction
                 update[name] = local_params[name] - initial_global_params[name].to(local_params[name].device)
         client_updates.append(update)
 
     shapley_values = np.zeros(num_clients)
-    num_samples = args.shapley_samples # Monte Carlo örnek sayısı (Örn: 10)
+    # Get the number of Monte Carlo samples (default to 10 if not in args)
+    num_samples = args.shapley_samples if hasattr(args, 'shapley_samples') else 10 
     
-    # 2. Monte Carlo Shapley Hesaplaması
+    # 2. Monte Carlo Shapley Calculation
     for _ in range(num_samples):
+        # Generate a random permutation of clients
         permutation = np.random.permutation(num_clients)
         
+        # Calculate the marginal contribution for every client in the permutation
         for i, client_idx in enumerate(permutation):
-            # Koalisyon: Permütasyonda bu istemciden öncekiler
+            
+            # Coalition S: Clients preceding the current client in the permutation
             coalition_indices = permutation[:i]
-            # Koalisyon + İstemci
+            # Coalition S U {i}: S plus the current client
             coalition_plus_indices = permutation[:i+1]
             
-            # Koalisyonun birleşik güncellemesini hesapla (Basit Ortalaması)
-            # ShapFed mantığında gradyan/update benzerliği esastır.
-            
-            # Mevcut istemcinin son katman update'i
+            # Vector of the current client's last-layer update (Delta W_i)
             curr_update_w = torch.cat([
                 client_updates[client_idx][weight_layer].view(-1),
                 client_updates[client_idx][bias_layer].view(-1)
             ])
-            
-            # Koalisyon + İstemci'nin ortalama update'i (Aggregated Update)
-            agg_update_w = torch.zeros_like(curr_update_w)
-            
-            if len(coalition_plus_indices) > 0:
-                temp_w = torch.zeros_like(client_updates[0][weight_layer])
-                temp_b = torch.zeros_like(client_updates[0][bias_layer])
-                
-                for c_idx in coalition_plus_indices:
-                    temp_w += client_updates[c_idx][weight_layer]
-                    temp_b += client_updates[c_idx][bias_layer]
-                
-                # Ortalamasını al
-                temp_w /= len(coalition_plus_indices)
-                temp_b /= len(coalition_plus_indices)
-                
-                agg_update_w = torch.cat([temp_w.view(-1), temp_b.view(-1)])
+            # Normalize for cosine similarity calculation
+            curr_update_w_norm = F.normalize(curr_update_w.unsqueeze(0), p=2)
 
-            # Cosine Similarity Hesapla
-            sim = F.cosine_similarity(curr_update_w.unsqueeze(0), agg_update_w.unsqueeze(0)).item()
             
-            # Shapley değerine ekle (Marjinal katkı olarak benzerliği kullanıyoruz)
-            shapley_values[client_idx] += sim
+            # --- Step 1: Calculate the value of Coalition S (v(S)) ---
+            sim_s = 0.0
+            if len(coalition_indices) > 0:
+                # Calculate the average update of Coalition S (Delta W_S)
+                temp_w_s = torch.zeros_like(client_updates[0][weight_layer])
+                temp_b_s = torch.zeros_like(client_updates[0][bias_layer])
+                
+                for c_idx in coalition_indices:
+                    temp_w_s += client_updates[c_idx][weight_layer]
+                    temp_b_s += client_updates[c_idx][bias_layer]
+                
+                temp_w_s /= len(coalition_indices)
+                temp_b_s /= len(coalition_indices)
+                agg_update_s_w = torch.cat([temp_w_s.view(-1), temp_b_s.view(-1)])
+                
+                # Value function: v(S) = sim(Delta W_S, Delta W_i)
+                agg_update_s_w_norm = F.normalize(agg_update_s_w.unsqueeze(0), p=2)
+                sim_s = F.cosine_similarity(curr_update_w_norm, agg_update_s_w_norm).item()
+            # If S is empty, sim_s remains 0.0
+
+            
+            # --- Step 2: Calculate the value of Coalition S U {i} (v(S U {i})) ---
+            # Calculate the average update of Coalition S U {i} (Delta W_S U {i})
+            temp_w_s_plus_i = torch.zeros_like(client_updates[0][weight_layer])
+            temp_b_s_plus_i = torch.zeros_like(client_updates[0][bias_layer])
+            
+            for c_idx in coalition_plus_indices:
+                temp_w_s_plus_i += client_updates[c_idx][weight_layer]
+                temp_b_s_plus_i += client_updates[c_idx][bias_layer]
+            
+            temp_w_s_plus_i /= len(coalition_plus_indices)
+            temp_b_s_plus_i /= len(coalition_plus_indices)
+            
+            agg_update_s_plus_i_w = torch.cat([temp_w_s_plus_i.view(-1), temp_b_s_plus_i.view(-1)])
+            
+            # Value function: v(S U {i}) = sim(Delta W_{S U {i}}, Delta W_i)
+            agg_update_s_plus_i_w_norm = F.normalize(agg_update_s_plus_i_w.unsqueeze(0), p=2)
+            sim_s_plus_i = F.cosine_similarity(curr_update_w_norm, agg_update_s_plus_i_w_norm).item()
+            
+            
+            # --- Step 3: Marginal Contribution ---
+            # Marginal Contribution = v(S U {i}) - v(S)
+            marginal_contribution = sim_s_plus_i - sim_s
+            
+            # Add the contribution to the client's Shapley value sum
+            shapley_values[client_idx] += marginal_contribution
 
     if num_samples > 0:
+        # Average the contributions over all Monte Carlo samples
         shapley_values /= num_samples
 
-    # Değerleri normalize et (Negatifleri temizle ve toplama böl)
-    shapley_values = np.maximum(shapley_values, 0) # ReLU gibi, negatif katkıyı 0 yap
+    # Normalize the values: Clip negative contributions to zero and divide by the total sum
+    # This ensures the resulting weights for aggregation/broadcast are non-negative, as required by ShapFed.
+    shapley_values = np.maximum(shapley_values, 0)
     total_shapley = np.sum(shapley_values)
     
     if total_shapley > 0:
         normalized_weights = shapley_values / total_shapley
     else:
-        # Hepsi 0 ise eşit dağıt (FedAvg fallback)
+        # Fallback: If total contribution is zero, assign equal weights (FedAvg fallback)
         normalized_weights = np.ones(num_clients) / num_clients
-        
+            
     return normalized_weights
+    
 
-# --- SINIFLAR ---
-
+#Classess
 class Global(object):
     def __init__(self, args):
         self.model = ResNet(resnet_size=8, scaling=4,
@@ -707,20 +823,20 @@ class Global(object):
 
     def initialize_for_model_fusion(self, args, list_dicts_local_params, list_nums_local_data, initial_global_params):
         """
-        Model parametrelerini birleştirir.
-        - SAGE: Veri sayısına göre ağırlıklı ortalama (FedAvg).
-        - ShapFed: Shapley değerlerine göre ağırlıklı ortalama.
+        Model parameter aggregation.
+        - SAGE: weighted average acc. to data numbet (FedAvg).
+        - ShapFed: weighted average acc. to Shapley values.
         """
         fused_params = copy.deepcopy(list_dicts_local_params[0])
         
-        # Ağırlıkları belirle
+        # define weights
         if args.aggregation_method == 'ShapFed':
-            # ShapFed: Katkı payına göre ağırlıklar
+            # ShapFed: contribution based
             weights = compute_cssv(args, list_dicts_local_params, initial_global_params)
-            # Loglama
+            # Log
             # print(f"ShapFed Weights: {weights}")
         else:
-            # SAGE (Standart): Veri miktarına göre ağırlıklar
+            # SAGE (Standart): 
             total_data = sum(list_nums_local_data)
             weights = [n / total_data for n in list_nums_local_data]
 
