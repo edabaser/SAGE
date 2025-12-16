@@ -1058,7 +1058,7 @@ def main_loop(alpha):
             num_labeled=args.num_labeled,
             alpha=alpha,
             mu=args.mu,
-            num_rounds=args.{num_rounds},
+            num_rounds=args.num_rounds,
             batch_label=args.batch_size_local_labeled,
             batch_unlabel=args.batch_size_local_unlabeled,
         ))
