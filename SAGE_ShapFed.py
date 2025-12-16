@@ -612,9 +612,9 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
 
 def compute_cssv(args, local_models_params, initial_global_params):
     """
-    ShapFed: Class-Specific Shapley Values (CSSV) Hesaplaması.
-    İstemcilerin model güncellemelerinin (weights - global_weights) koalisyon güncellemesine
-    olan benzerliğini (Cosine Similarity) ölçer.
+    ShapFed: Class-Specific Shapley Values (CSSV) Calculation.
+    measure the cosine similarity between coalition update and clietn's model updates 
+    (weights - global_weights).
     """
     num_clients = len(local_models_params)
     if num_clients == 0:
@@ -928,14 +928,14 @@ def main_loop(alpha):
         'num_labeled:{num_labeled}\n'
         'non_iid:{alpha}\n'
         'mu:{mu}\n'
-        'num_rounds:{num_rounds}\n'
+        'num_rounds:{round_num}/{num_rounds}\n'
         'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
             dataset=args.dataset,
             num_classes=args.num_classes,
             num_labeled=args.num_labeled,
             alpha=alpha,
             mu=args.mu,
-            num_rounds=args.num_rounds,
+            num_rounds=args.{round_num}/{num_rounds},
             batch_label=args.batch_size_local_labeled,
             batch_unlabel=args.batch_size_local_unlabeled,
         ))
