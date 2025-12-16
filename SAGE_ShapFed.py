@@ -601,8 +601,7 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
             model.load_state_dict(checkpoint['model_state_dict'])
             start_round = checkpoint['round'] + 1
             fedavg_acc = checkpoint['fedavg_acc']
-            best_acc = max(fedavg_acc)
-            print(f"[SAGE] Resuming from Round {start_round}. Last Acc: {fedavg_acc[-1] if fedavg_acc else 0:.4f}, Best Acc: {best_acc:.4f}")
+            print(f"[SAGE] Resuming from Round {start_round}. Last Acc: {fedavg_acc[-1] if fedavg_acc else 0:.4f}")
             return start_round, fedavg_acc
         except Exception as e:
             print(f"[SAGE] Error loading checkpoint: {e}. Starting from scratch.")
