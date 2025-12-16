@@ -1051,7 +1051,7 @@ def main_loop(alpha):
         'num_labeled:{num_labeled}\n'
         'non_iid:{alpha}\n'
         'mu:{mu}\n'
-        'num_rounds:{round_num}/{num_rounds}\n'
+        'num_rounds:{num_rounds}\n'
         'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
             dataset=args.dataset,
             num_classes=args.num_classes,
