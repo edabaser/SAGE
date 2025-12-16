@@ -862,7 +862,7 @@ class Local(object):
 def main_loop(alpha):
     args = args_parser()
 
-    # --- Checkpoint Setup ---
+    # Checkpoint Setup
     checkpoint_dir = os.path.join(args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}')
     os.makedirs(checkpoint_dir, exist_ok=True)
     print(f"Checkpoints will be saved to: {checkpoint_dir}")
@@ -873,7 +873,6 @@ def main_loop(alpha):
     log_file = os.path.join(log_dir, f'SAGE_{args.aggregation_method}_α={alpha}.log')
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename=log_file)
 
-    # Dataset Loaders (Örnek: CIFAR10, diğerleri options'a göre genişletilebilir)
     if args.dataset == 'CIFAR10':
         args.num_classes = 10
         args.num_labeled = 500 
@@ -884,26 +883,84 @@ def main_loop(alpha):
         ])
         data_local_training = datasets.CIFAR10(args.path_cifar10, train=True, download=True, transform=None)
         data_global_test = datasets.CIFAR10(args.path_cifar10, train=False, transform=transform_test)
-    else:
-        # Diğer datasetler için SAGE.py içindeki blokları buraya kopyalayabilirsiniz
-        print(f"Dataset {args.dataset} not implemented in this snippet. Using CIFAR10 defaults.")
-        args.num_classes = 10
-        transform_test = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
-        data_local_training = datasets.CIFAR10(args.path_cifar10, train=True, download=True, transform=None)
-        data_global_test = datasets.CIFAR10(args.path_cifar10, train=False, transform=transform_test)
 
+    elif args.dataset == 'CIFAR100':
+        args.num_classes = 100
+        args.num_labeled = 50
+        args.num_rounds = 500
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+        ])
+        data_local_training = datasets.CIFAR100(args.path_cifar100, train=True, download=True, transform=None)
+        data_global_test = datasets.CIFAR100(args.path_cifar100, train=False, transform=transform_test)
+
+    elif args.dataset == 'SVHN':
+        args.num_classes = 10
+        args.num_labeled = 460
+        args.num_rounds = 300
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970)),
+        ])
+        data_local_training = datasets.SVHN(args.path_svhn, split='train', download=True, transform=None)
+        data_global_test = datasets.SVHN(args.path_svhn, split='test', transform=transform_test, download=True)
+
+    elif args.dataset == 'CINIC10':
+        args.num_classes = 10
+        args.num_labeled = 900
+        args.num_rounds = 400
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4789, 0.4723, 0.4305), (0.2421, 0.2383, 0.2587)),
+        ])
+        data_local_training = CINIC10(root=args.path_cinic10, split='train', transform=None)
+        data_global_test = CINIC10(root=args.path_cinic10, split='test', transform=transform_test)
+
+    
+    else:
+        print(f"Dataset {args.dataset} not implemented in this snippet. Please specify one of the following: CIFAR10, CIFAR100, CINIC10 or SVHN.")
+        exit(1)
+
+    print(
+        'dataset:{dataset}\n'
+        'num_classes:{num_classes}\n'
+        'num_labeled:{num_labeled}\n'
+        'non_iid:{alpha}\n'
+        'mu:{mu}\n'
+        'num_rounds:{num_rounds}\n'
+        'batch_label:{batch_label}, batch_unlabel:{batch_unlabel}'.format(
+            dataset=args.dataset,
+            num_classes=args.num_classes,
+            num_labeled=args.num_labeled,
+            alpha=alpha,
+            mu=args.mu,
+            num_rounds=args.num_rounds,
+            batch_label=args.batch_size_local_labeled,
+            batch_unlabel=args.batch_size_local_unlabeled,
+        ))
+    
     # Partitioning
     random_state = np.random.RandomState(args.seed)
     list_label2indices = classify_label(data_local_training, args.num_classes)
     list_label2indices_labeled, list_label2indices_unlabeled = partition_train(list_label2indices, args.num_labeled)
 
+    # IID
     if alpha == 0:
         list_client2indices_labeled = clients_indices_homo(list_label2indices=list_label2indices_labeled, num_classes=args.num_classes, num_clients=args.num_clients)
         list_client2indices_unlabeled = clients_indices_homo(list_label2indices=list_label2indices_unlabeled, num_classes=args.num_classes, num_clients=args.num_clients)
+    
+    # Non-IID
     else:
         list_client2indices_labeled = clients_indices(list_label2indices=list_label2indices_labeled, num_classes=args.num_classes, num_clients=args.num_clients, non_iid_alpha=alpha, seed=0)
         list_client2indices_unlabeled = clients_indices(list_label2indices=list_label2indices_unlabeled, num_classes=args.num_classes, num_clients=args.num_clients, non_iid_alpha=alpha, seed=0)
 
+    # Show data distribubution
+    show_clients_data_distribution(data_local_training, list_client2indices_labeled,
+                                   list_client2indices_unlabeled, args.num_classes)
+
+    
+    # add labeled samples without labels into the unlabeled dataset
     for client in range(args.num_clients):
         list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
 
@@ -921,7 +978,7 @@ def main_loop(alpha):
     # Training Loop
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         
-        # Mevcut global parametreleri indir (ShapFed'de update hesabı için gerekli)
+        # download current global parameters (necessary in ShapFed for update calculation)
         dict_global_params = global_model.download_params()
 
         online_clients = random_state.choice(total_clients, args.num_online_clients, replace=False)
@@ -942,10 +999,10 @@ def main_loop(alpha):
             list_dicts_local_params.append(copy.deepcopy(local_params))
 
         # AGGREGATION: SAGE vs ShapFed
-        # initialize_for_model_fusion fonksiyonunu güncelledik
+        # initialize_for_model_fusion functionn updated
         fedavg_params = global_model.initialize_for_model_fusion(args, list_dicts_local_params, list_nums_local_data, dict_global_params)
 
-        # Global Modeli Güncelle
+        # Global Model update
         global_model.model.load_state_dict(fedavg_params)
 
         # Evaluate
@@ -953,7 +1010,7 @@ def main_loop(alpha):
         fedavg_acc.append(global_acc)
         print(f'Round {r} Accuracy: {global_acc}')
 
-        # Save Checkpoint (Her round sonu)
+        # Save Checkpoint (after each round)
         save_checkpoint(r, global_model.download_params(), fedavg_acc, checkpoint_dir)
 
         # CSV Save
