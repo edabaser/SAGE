@@ -1063,6 +1063,7 @@ def main_loop(alpha):
             batch_unlabel=args.batch_size_local_unlabeled,
         ))
     
+    
     # Partitioning
     random_state = np.random.RandomState(args.seed)
     list_label2indices = classify_label(data_local_training, args.num_classes)
