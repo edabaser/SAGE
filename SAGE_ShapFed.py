@@ -694,6 +694,8 @@ def load_checkpoint(model, checkpoint_dir, filename='checkpoint.pt'):
 #         normalized_weights = np.ones(num_clients) / num_clients
         
 #     return normalized_weights
+
+
 def compute_cssv(args, local_models_params, initial_global_params):
     """
     ShapFed: Class-Specific Shapley Values (CSSV) Calculation using Monte Carlo.
@@ -829,29 +831,30 @@ class Global(object):
         """
         fused_params = copy.deepcopy(list_dicts_local_params[0])
         
-        # define weights
+        # define aggregation weights
         if args.aggregation_method == 'ShapFed':
             # ShapFed: contribution based
             weights = compute_cssv(args, list_dicts_local_params, initial_global_params)
             # Log
             # print(f"ShapFed Weights: {weights}")
         else:
-            # SAGE (Standart): 
+            # Default SAGE (FedAvg): Data size proportional weights
             total_data = sum(list_nums_local_data)
             weights = [n / total_data for n in list_nums_local_data]
 
-        # Ağırlıklı Ortalama Alma
+        # Weighted Averaging
         for name_param in list_dicts_local_params[0]:
             list_values_param = []
             for dict_local_params, weight in zip(list_dicts_local_params, weights):
                 list_values_param.append(dict_local_params[name_param] * weight)
             
-            # ShapFed ağırlıkları zaten normalize (toplamı 1), FedAvg da öyle.
+            # Aggregate the weighted parameters
             fused_params[name_param] = sum(list_values_param)
             
         return fused_params
 
     def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
+        # Evaluation of the global model
         self.model.load_state_dict(fedavg_params)
         self.model.eval()
         with no_grad():
@@ -872,9 +875,11 @@ class Global(object):
 
 class Local(object):
     def __init__(self, args):
+        # Local training model
         self.local_model = ResNet(resnet_size=8, scaling=4,
                                   save_activations=False, group_norm_num_groups=None,
                                   freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
+        # Global/Teacher model for pseudo-label generation in SAGE
         self.local_G = ResNet(resnet_size=8, scaling=4,
                               save_activations=False, group_norm_num_groups=None,
                               freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
@@ -893,7 +898,7 @@ class Local(object):
             dataset=data_client_unlabeled, sampler=RandomSampler(data_client_unlabeled),
             batch_size=args.batch_size_local_labeled_fixmatch * args.mu, drop_last=True, num_workers=2, pin_memory=True
         )
-
+        # Load global parameters for the current client model and the teacher model
         self.local_model.load_state_dict(global_params)
         self.local_model.train()
         self.local_G.load_state_dict(global_params)
@@ -913,7 +918,7 @@ class Local(object):
                 inputs_x, inputs_u_w, inputs_u_s = inputs_x.cuda(args.gpu_id), inputs_u_w.cuda(args.gpu_id), inputs_u_s.cuda(args.gpu_id)
                 batch_size = inputs_x.shape[0]
                 
-                # FixMatch: Interleave
+                # FixMatch: Interleave to perform a single forward pass
                 inputs = self.interleave(torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1).cuda(args.gpu_id)
                 targets_x = targets_x.cuda(args.gpu_id)
 
@@ -923,7 +928,7 @@ class Local(object):
                 logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
                 del logits
 
-                # Loss X
+                # Loss X(Labeled Loss)
                 Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
                 # Pseudo-Labeling (Global + Local)
@@ -937,14 +942,16 @@ class Local(object):
                 targets_u_local_one_hot = F.one_hot(targets_u_local, args.num_classes).float()
                 targets_u_global_one_hot = F.one_hot(targets_u_global, args.num_classes).float()
 
+                # Confidence Masks
                 mask_local = max_probs_local.ge(args.threshold).float()
                 mask_global = max_probs_global.ge(args.threshold).float()
 
-                # SAGE Confidence Discrepancy Logic
+                # SAGE Confidence Discrepancy Logic (Dynamic Weighting)
                 delta_c = torch.clamp(torch.abs(max_probs_local - max_probs_global) + 1e-6, min=1e-6, max=1.0)
                 kappa = torch.log(torch.tensor(2.0)) / 0.05
                 lambda_dynamic = torch.clamp(torch.exp(-kappa * delta_c), min=1e-6, max=1.0)
 
+                # Pseudo-Label Fusion
                 final_targets_u = torch.where(
                     mask_local.unsqueeze(1).bool(),
                     lambda_dynamic.unsqueeze(1) * targets_u_local_one_hot + (1 - lambda_dynamic).unsqueeze(1) * targets_u_global_one_hot,
@@ -955,7 +962,7 @@ class Local(object):
                 logits_u_s_probs = torch.softmax(logits_u_s, dim=-1) + 1e-10
                 final_targets_u = final_targets_u + 1e-10
                 
-                # Loss U
+                # Loss U (Unlabeled Loss - KL Divergence against soft fused labels)
                 Lu = (F.kl_div(logits_u_s_probs.log(), final_targets_u, reduction='none').sum(-1) * mask_valid).mean()
 
                 loss = Lx + args.lambda_u * Lu
