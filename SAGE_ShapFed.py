@@ -354,7 +354,7 @@ def main_loop(alpha):
     if args.dataset == 'CIFAR10':
         args.num_classes = 10
         args.num_labeled = 500 
-        args.num_rounds = 400 
+        args.num_rounds = 600 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
