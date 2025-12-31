@@ -395,7 +395,7 @@ def main_loop(alpha):
         data_local_training = CINIC10(root=args.path_cinic10, split='train', transform=None)
         data_global_test = CINIC10(root=args.path_cinic10, split='test', transform=transform_test)
 
-elif args.dataset == 'HAM10000':
+    elif args.dataset == 'HAM10000':
         args.num_classes = 7
         args.num_labeled = 100  # Number of labeled samples per client
         args.num_rounds = 400   # Total communication rounds
