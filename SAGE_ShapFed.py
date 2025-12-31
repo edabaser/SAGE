@@ -395,7 +395,39 @@ def main_loop(alpha):
         data_local_training = CINIC10(root=args.path_cinic10, split='train', transform=None)
         data_global_test = CINIC10(root=args.path_cinic10, split='test', transform=transform_test)
 
-    
+elif args.dataset == 'HAM10000':
+        args.num_classes = 7
+        args.num_labeled = 100  # Number of labeled samples per client
+        args.num_rounds = 400   # Total communication rounds
+
+        # Specific HAM10000 normalization parameters
+        # Calculated based on the RGB distribution of the skin lesion dataset
+        ham_mean = [0.763, 0.545, 0.570]
+        ham_std = [0.140, 0.152, 0.169]
+
+        # Define training transformations (Augmentation + Normalization)
+        transform_train = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.RandomHorizontalFlip(p=0.5), # Recommended for skin lesions
+            transforms.RandomVerticalFlip(p=0.5),   # Recommended as orientation doesn't matter in dermoscopy
+            transforms.ToTensor(),
+            transforms.Normalize(mean=ham_mean, std=ham_std)
+        ])
+
+        # Define testing transformations (Normalization only)
+        transform_test = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=ham_mean, std=ham_std)
+        ])
+
+        from torchvision.datasets import ImageFolder
+        
+        # Initialize datasets
+        # Ensure transform is applied to training data (previously transform=None)
+        data_local_training = ImageFolder(root=args.path_ham10000, transform=transform_train)
+        data_global_test = ImageFolder(root=args.path_ham10000, transform=transform_test)
+
     else:
         print(f"Dataset {args.dataset} not implemented in this snippet. Please specify one of the following: CIFAR10, CIFAR100, CINIC10 or SVHN.")
         exit(1)
