@@ -212,6 +212,8 @@ class Global(object):
         # Evaluation of the global model
         self.model.load_state_dict(fedavg_params)
         self.model.eval()
+        all_labels = []
+        all_predicts = []
         with no_grad():
             test_loader = DataLoader(data_test, batch_size_test)
             num_corrects = 0
@@ -221,8 +223,17 @@ class Global(object):
                 _, outputs = self.model(images)
                 _, predicts = max(outputs, -1)
                 num_corrects += sum(eq(predicts.cpu(), labels.cpu())).item()
+
+                all_labels.extend(labels.cpu().numpy())
+                all_predicts.extend(predicts.cpu().numpy())
+                
             accuracy = num_corrects / len(data_test)
-        return accuracy
+
+            # Compute ACSA (Macro-Averaged Recall) and Macro F1
+            acsa = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
+            macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
+            
+        return accuracy, acsa, macro_f1
 
     def download_params(self):
         return self.model.state_dict()
