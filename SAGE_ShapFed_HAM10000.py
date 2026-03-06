@@ -17,6 +17,11 @@ from Dataset.dataset import classify_label, show_clients_data_distribution, Indi
 from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
 from sklearn.metrics import recall_score, f1_score
 
+
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+
 def save_checkpoint(round_num, model_state, fedavg_acc_history, checkpoint_dir, filename='checkpoint.pt'):
     os.makedirs(checkpoint_dir, exist_ok=True)
     state = {
