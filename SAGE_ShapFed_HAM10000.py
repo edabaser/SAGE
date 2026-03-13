@@ -441,11 +441,11 @@ def main_loop(alpha):
         )
 
         # Train dataset: transform yok, Indices2Dataset sınıfları yönetir
-        data_local_training = _SubsetImageFolder(full_dataset, train_indices, transform=None)
+        data_local_training = _SubsetImageFolder(full_dataset, train_indices)
 
         # Test dataset: transform uygulanmış
         test_full = ImageFolder(root=args.path_ham10000, transform=transform_test)
-        data_global_test = _SubsetImageFolder(test_full, test_indices, transform=transform_test)
+        data_global_test = _SubsetImageFolder(test_full, test_indices)
 
         print(f"[HAM10000] Train: {len(train_indices)} | Test: {len(test_indices)}")
         # Sınıf dağılımını göster
@@ -599,14 +599,8 @@ class _SubsetImageFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         real_idx = self.indices[idx]
-        # ImageFolder.__getitem__ kullan — kendi cache/loader'ını kullanır
+        # ImageFolder.__getitem__ kullan — transform base_dataset'te zaten uygulanır
         img, label = self.base_dataset[real_idx]
-        # base_dataset'te transform=None ise img PIL Image olarak gelir
-        if self.transform is not None and img is not None:
-            if not hasattr(img, 'size'):  # tensor geldiyse PIL'e çevirme
-                pass
-            else:
-                img = self.transform(img)
         return img, label
 
 
