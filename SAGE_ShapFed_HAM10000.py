@@ -412,7 +412,7 @@ def main_loop(alpha):
 
     elif args.dataset == 'HAM10000':
         args.num_classes = 7
-        args.num_labeled = 250   # 100 → 250
+        args.num_labeled = 1000   # 250 → 1000
         args.num_rounds  = 200
         ham_mean = [0.763, 0.545, 0.570]
         ham_std  = [0.140, 0.152, 0.169]
