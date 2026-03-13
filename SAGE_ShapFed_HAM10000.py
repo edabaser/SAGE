@@ -621,7 +621,6 @@
 #     args = args_parser()
 #     main_loop(args.alpha)
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -994,20 +993,6 @@ class Local(object):
 def main_loop(alpha):
     args = args_parser()
 
-    # ── Dizin ayarları ──────────────────────────────────────
-    # Drive checkpoint dizini (args.checkpoint_dir'den gelir)
-    drive_ckpt_dir = os.path.join(
-        # args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
-      f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
-
-    )
-    # /content'teki hızlı lokal checkpoint dizini
-    local_ckpt_dir = f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
-    os.makedirs(local_ckpt_dir, exist_ok=True)
-    os.makedirs(drive_ckpt_dir, exist_ok=True)
-    print(f"Local  checkpoint dir : {local_ckpt_dir}")
-    print(f"Drive  checkpoint dir : {drive_ckpt_dir}")
-
     # ── Log ayarı ───────────────────────────────────────────
     log_dir  = f'./results/{args.dataset}/logs'
     os.makedirs(log_dir, exist_ok=True)
@@ -1098,6 +1083,18 @@ def main_loop(alpha):
     else:
         print(f"[ERROR] Unknown dataset: {args.dataset}")
         exit(1)
+
+    # ── Dizin ayarları ──────────────────────────────────────
+    # Drive checkpoint dizini (args.checkpoint_dir'den gelir)
+    drive_ckpt_dir = os.path.join(
+        args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+    )
+    # /content'teki hızlı lokal checkpoint dizini
+    local_ckpt_dir = f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+    os.makedirs(local_ckpt_dir, exist_ok=True)
+    os.makedirs(drive_ckpt_dir, exist_ok=True)
+    print(f"Local  checkpoint dir : {local_ckpt_dir}")
+    print(f"Drive  checkpoint dir : {drive_ckpt_dir}")
 
     # ── Veri dağılımı ────────────────────────────────────────
     random_state = np.random.RandomState(args.seed)
