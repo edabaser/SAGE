@@ -412,8 +412,8 @@ def main_loop(alpha):
 
     elif args.dataset == 'HAM10000':
         args.num_classes = 7
-        args.num_labeled = 1000   # 250 → 1000
-        args.num_rounds  = 200
+        args.num_labeled = 1000  # 100 → 1000
+        args.num_rounds  = 400
         ham_mean = [0.763, 0.545, 0.570]
         ham_std  = [0.140, 0.152, 0.169]
 
@@ -599,12 +599,14 @@ class _SubsetImageFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         real_idx = self.indices[idx]
-        img, label = self.base_dataset.samples[real_idx]
-        # img burada dosya yolu (str) — ImageFolder gibi aç
-        from PIL import Image as PILImage
-        img = PILImage.open(img).convert('RGB')
-        if self.transform is not None:
-            img = self.transform(img)
+        # ImageFolder.__getitem__ kullan — kendi cache/loader'ını kullanır
+        img, label = self.base_dataset[real_idx]
+        # base_dataset'te transform=None ise img PIL Image olarak gelir
+        if self.transform is not None and img is not None:
+            if not hasattr(img, 'size'):  # tensor geldiyse PIL'e çevirme
+                pass
+            else:
+                img = self.transform(img)
         return img, label
 
 
