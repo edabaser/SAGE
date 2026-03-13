@@ -997,7 +997,9 @@ def main_loop(alpha):
     # ── Dizin ayarları ──────────────────────────────────────
     # Drive checkpoint dizini (args.checkpoint_dir'den gelir)
     drive_ckpt_dir = os.path.join(
-        args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+        # args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+      f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+
     )
     # /content'teki hızlı lokal checkpoint dizini
     local_ckpt_dir = f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
