@@ -260,11 +260,11 @@ class Local(object):
             lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4
         )
 
-    def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r):
-        self.labeled_trainloader = DataLoader(
-            dataset=data_client_labeled,
-            sampler=RandomSampler(data_client_labeled),
-            batch_size=args.batch_size_local_labeled_fixmatch,
+    def fixmatch_train(self, args, data_client_, data_client_un, global_params, r):
+        self._trainloader = DataLoader(
+            dataset=data_client_,
+            sampler=RandomSampler(data_client_),
+            batch_size=args.batch_size_local__fixmatch,
             drop_last=True, num_workers=0, pin_memory=False
         )
         self.unlabeled_trainloader = DataLoader(
@@ -412,7 +412,7 @@ def main_loop(alpha):
 
     elif args.dataset == 'HAM10000':
         args.num_classes = 7
-        args.num_labeled = 1000  # 100 → 1000
+        args.num_labeled = 10000  # 100 → 1000
         args.num_rounds  = 400
         ham_mean = [0.763, 0.545, 0.570]
         ham_std  = [0.140, 0.152, 0.169]
