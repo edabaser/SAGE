@@ -264,7 +264,7 @@ class Local(object):
         self._trainloader = DataLoader(
             dataset=data_client_,
             sampler=RandomSampler(data_client_),
-            batch_size=args.batch_size_local__fixmatch,
+            batch_size=args.batch_size_local_fixmatch,
             drop_last=True, num_workers=0, pin_memory=False
         )
         self.unlabeled_trainloader = DataLoader(
