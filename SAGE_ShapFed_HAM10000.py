@@ -617,6 +617,8 @@
 #     args = args_parser()
 #     main_loop(args.alpha)
 
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -982,3 +984,215 @@ def main_loop(alpha):
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f'SAGE_{args.aggregation_method}_alpha={alpha}.log')
     logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        filename=log_file,
+        filemode='a'
+    )
+
+    if args.dataset == 'CIFAR10':
+        args.num_classes = 10;  args.num_labeled = 500;  args.num_rounds = 600
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+        data_local_training = datasets.CIFAR10(args.path_cifar10, train=True,  download=True, transform=None)
+        data_global_test    = datasets.CIFAR10(args.path_cifar10, train=False, transform=transform_test)
+
+    elif args.dataset == 'CIFAR100':
+        args.num_classes = 100;  args.num_labeled = 50;  args.num_rounds = 500
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+        ])
+        data_local_training = datasets.CIFAR100(args.path_cifar100, train=True,  download=True, transform=None)
+        data_global_test    = datasets.CIFAR100(args.path_cifar100, train=False, transform=transform_test)
+
+    elif args.dataset == 'SVHN':
+        args.num_classes = 10;  args.num_labeled = 460;  args.num_rounds = 300
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970)),
+        ])
+        data_local_training = datasets.SVHN(args.path_svhn, split='train', download=True, transform=None)
+        data_global_test    = datasets.SVHN(args.path_svhn, split='test',  download=True, transform=transform_test)
+
+    elif args.dataset == 'HAM10000':
+        args.num_classes = 7
+        args.num_labeled = 1000
+        args.num_rounds  = 400
+        ham_mean = [0.763, 0.545, 0.570]
+        ham_std  = [0.140, 0.152, 0.169]
+
+        transform_test = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=ham_mean, std=ham_std),
+        ])
+
+        full_dataset = ImageFolder(root=args.path_ham10000, transform=None)
+
+        from sklearn.model_selection import train_test_split
+        all_indices = list(range(len(full_dataset)))
+        all_targets = [full_dataset.targets[i] for i in all_indices]
+
+        train_indices, test_indices = train_test_split(
+            all_indices,
+            test_size=0.20,
+            stratify=all_targets,
+            random_state=args.seed
+        )
+
+        data_local_training = _SubsetImageFolder(full_dataset, train_indices)
+        test_full           = ImageFolder(root=args.path_ham10000, transform=transform_test)
+        data_global_test    = _SubsetImageFolder(test_full, test_indices)
+
+        from collections import Counter
+        train_cls = Counter(all_targets[i] for i in train_indices)
+        test_cls  = Counter(all_targets[i] for i in test_indices)
+        cls_names = full_dataset.classes
+        print(f"[HAM10000] Train: {len(train_indices)} | Test: {len(test_indices)}")
+        print(f"[HAM10000] Classes: {cls_names}")
+        print(f"[HAM10000] Train dist: { {cls_names[k]: v for k,v in sorted(train_cls.items())} }")
+        print(f"[HAM10000] Test  dist: { {cls_names[k]: v for k,v in sorted(test_cls.items())} }")
+
+    else:
+        print(f"[ERROR] Unknown dataset: {args.dataset}")
+        exit(1)
+
+    drive_ckpt_dir = os.path.join(
+        args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+    )
+    local_ckpt_dir = f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
+    os.makedirs(local_ckpt_dir, exist_ok=True)
+    os.makedirs(drive_ckpt_dir, exist_ok=True)
+    print(f"Local  checkpoint dir : {local_ckpt_dir}")
+    print(f"Drive  checkpoint dir : {drive_ckpt_dir}")
+
+    random_state = np.random.RandomState(args.seed)
+    list_label2indices = classify_label(data_local_training, args.num_classes)
+    list_label2indices_labeled, list_label2indices_unlabeled = partition_train(
+        list_label2indices, args.num_labeled
+    )
+
+    if alpha == 0:
+        list_client2indices_labeled   = clients_indices_homo(
+            list_label2indices_labeled, args.num_classes, args.num_clients)
+        list_client2indices_unlabeled = clients_indices_homo(
+            list_label2indices_unlabeled, args.num_classes, args.num_clients)
+    else:
+        list_client2indices_labeled   = clients_indices(
+            list_label2indices_labeled, args.num_classes, args.num_clients, alpha, seed=0)
+        list_client2indices_unlabeled = clients_indices(
+            list_label2indices_unlabeled, args.num_classes, args.num_clients, alpha, seed=0)
+
+    for client in range(args.num_clients):
+        list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
+
+    global_model = Global(args)
+    local_model  = Local(args)
+
+    start_round, metrics_history = load_checkpoint(
+        global_model.model, local_ckpt_dir, drive_ckpt_dir
+    )
+
+    total_clients          = list(range(args.num_clients))
+    indices2data_labeled   = Indices2Dataset_labeled(data_local_training)
+    indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
+
+    for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
+        dict_global_params = global_model.download_params()
+        online_clients = random_state.choice(total_clients, args.num_online_clients, replace=False)
+
+        list_dicts_local_params = []
+        list_nums_local_data    = []
+
+        for client in online_clients:
+            indices2data_labeled.load(list_client2indices_labeled[client])
+            indices2data_unlabeled.load(list_client2indices_unlabeled[client])
+            list_nums_local_data.append(
+                len(indices2data_labeled) + len(indices2data_unlabeled)
+            )
+            local_params = local_model.fixmatch_train(
+                args, indices2data_labeled, indices2data_unlabeled,
+                copy.deepcopy(dict_global_params), r
+            )
+            list_dicts_local_params.append(copy.deepcopy(local_params))
+
+        fedavg_params = global_model.initialize_for_model_fusion(
+            args, list_dicts_local_params, list_nums_local_data, dict_global_params
+        )
+        global_model.model.load_state_dict(fedavg_params)
+
+        acc, acsa, macro_f1 = global_model.fedavg_eval(
+            copy.deepcopy(fedavg_params), data_global_test, args.batch_size_test, args
+        )
+        metrics_history['acc'].append(acc)
+        metrics_history['acsa'].append(acsa)
+        metrics_history['f1'].append(macro_f1)
+
+        best_acc  = max(metrics_history['acc'])
+        best_acsa = max(metrics_history['acsa'])
+        best_f1   = max(metrics_history['f1'])
+
+        print(
+            f"\n[Round {r:>4}/{args.num_rounds}]  "
+            f"Acc: {acc:.4f} | ACSA: {acsa:.4f} | F1: {macro_f1:.4f}  ║  "
+            f"Best → Acc: {best_acc:.4f} | ACSA: {best_acsa:.4f} | F1: {best_f1:.4f}"
+        )
+        logging.info(
+            f"Round {r} | Acc: {acc:.4f} | ACSA: {acsa:.4f} | F1: {macro_f1:.4f} | "
+            f"Best Acc: {best_acc:.4f} | Best ACSA: {best_acsa:.4f} | Best F1: {best_f1:.4f}"
+        )
+
+        save_checkpoint(
+            r, global_model.download_params(), metrics_history,
+            local_ckpt_dir=local_ckpt_dir,
+            drive_ckpt_dir=drive_ckpt_dir,
+            drive_backup_every=10
+        )
+
+        result_dir  = f'./results/{args.dataset}'
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f'{result_dir}/{args.aggregation_method}_alpha={alpha}.csv'
+        n = len(metrics_history['acc'])
+        pd.DataFrame({
+            'round': list(range(1, n + 1)),
+            'acc':   metrics_history['acc'],
+            'acsa':  metrics_history['acsa'],
+            'f1':    metrics_history['f1'],
+        }).to_csv(result_file, index=False, encoding='utf-8')
+
+
+# ══════════════════════════════════════════════════════════════
+#  YARDIMCI
+# ══════════════════════════════════════════════════════════════
+
+class _SubsetImageFolder(torch.utils.data.Dataset):
+    def __init__(self, base_dataset, indices, transform=None):
+        self.base_dataset = base_dataset
+        self.indices      = indices
+        self.transform    = transform
+        self.targets = [base_dataset.targets[i] for i in indices]
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        real_idx = self.indices[idx]
+        img, label = self.base_dataset[real_idx]
+        return img, label
+
+
+# ══════════════════════════════════════════════════════════════
+#  ENTRY POINT
+# ══════════════════════════════════════════════════════════════
+
+if __name__ == '__main__':
+    torch.manual_seed(7)
+    torch.cuda.manual_seed(7)
+    np.random.seed(7)
+    random.seed(7)
+    torch.backends.cudnn.deterministic = True
+    args = args_parser()
+    main_loop(args.alpha)
