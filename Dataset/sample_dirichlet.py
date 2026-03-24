@@ -9,7 +9,6 @@ def clients_indices_homo(list_label2indices: list, num_classes: int, num_clients
         class_list_length = len(list_label2indices[index_class])
         for client in range(num_clients):
             class_partition = list_label2indices[index_class][math.floor(client/num_clients * class_list_length):math.floor((client+1) / num_clients * class_list_length)]
-
             class_partition_list.append(class_partition)
         partition_list.append(class_partition_list)
 
@@ -20,19 +19,14 @@ def clients_indices_homo(list_label2indices: list, num_classes: int, num_clients
             client_partition_list.extend(partition_list[class_idx][client])
         list_label2indices.append(np.array(client_partition_list))
 
-
     return list_label2indices
-
 
 
 def clients_indices(list_label2indices: list, num_classes: int, num_clients: int, non_iid_alpha: float, seed=None):
     indices2targets = []
-
-
     for label, indices in enumerate(list_label2indices):
         for idx in indices:
             indices2targets.append((idx, label))
-
 
     batch_indices = build_non_iid_by_dirichlet(seed=seed,
                                                indices2targets=indices2targets,
@@ -42,30 +36,22 @@ def clients_indices(list_label2indices: list, num_classes: int, num_clients: int
                                                n_workers=num_clients)
 
     indices_dirichlet = functools.reduce(lambda x, y: x + y, batch_indices)
-
     list_client2indices = partition_balance(indices_dirichlet, num_clients)
-
     return list_client2indices
 
 
 def partition_balance(idxs, num_split: int):
-
     num_per_part, r = len(idxs) // num_split, len(idxs) % num_split
     parts = []
     i, r_used = 0, 0
-
-
     while i < len(idxs):
         if r_used < r:
-
             parts.append(idxs[i:(i + num_per_part + 1)])
             i += num_per_part + 1
             r_used += 1
         else:
-
             parts.append(idxs[i:(i + num_per_part)])
             i += num_per_part
-
     return parts
 
 
@@ -75,15 +61,11 @@ def build_non_iid_by_dirichlet(
     n_auxi_workers = 2
     assert n_auxi_workers <= n_workers
 
-    # random shuffle targets indices.
     random_state.shuffle(indices2targets)
 
-    # partition indices.
     from_index = 0
     splitted_targets = []
-
     num_splits = math.ceil(n_workers / n_auxi_workers)
-
     split_n_workers = [
         n_auxi_workers
         if idx < num_splits - 1
@@ -100,34 +82,26 @@ def build_non_iid_by_dirichlet(
         )
         from_index = to_index
 
-    #
     idx_batch = []
     for _targets in splitted_targets:
-        # rebuild _targets.
         _targets = np.array(_targets)
         _targets_size = len(_targets)
-
-        # use auxi_workers for this subset targets.
         _n_workers = min(n_auxi_workers, n_workers)
-        #n_workers=10
         n_workers = n_workers - n_auxi_workers
 
-        # get the corresponding idx_batch.
         min_size = 0
-        _idx_batch = None
+        # FIX: None yerine boş listelerle başlat — minority sınıflar
+        # while koşulunu hiç sağlayamazsa idx_batch boş kalmaz
+        _idx_batch = [[] for _ in range(_n_workers)]
         while min_size < int(0.50 * _targets_size / _n_workers):
             _idx_batch = [[] for _ in range(_n_workers)]
             for _class in range(num_classes):
-                # get the corresponding indices in the original 'targets' list.
                 idx_class = np.where(_targets[:, 1] == _class)[0]
                 idx_class = _targets[idx_class, 0]
-
-                # sampling.
                 try:
                     proportions = random_state.dirichlet(
                         np.repeat(non_iid_alpha, _n_workers)
                     )
-                    # balance
                     proportions = np.array(
                         [
                             p * (len(idx_j) < _targets_size / _n_workers)
@@ -135,24 +109,18 @@ def build_non_iid_by_dirichlet(
                         ]
                     )
                     proportions = proportions / proportions.sum()
-                    proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[
-                        :-1
-                    ]
+                    proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[:-1]
                     _idx_batch = [
                         idx_j + idx.tolist()
-                        for idx_j, idx in zip(
-                            _idx_batch, np.split(idx_class, proportions)
-                        )
+                        for idx_j, idx in zip(_idx_batch, np.split(idx_class, proportions))
                     ]
                     sizes = [len(idx_j) for idx_j in _idx_batch]
                     min_size = min([_size for _size in sizes])
                 except ZeroDivisionError:
                     pass
-        if _idx_batch is not None:
-            idx_batch += _idx_batch
+        idx_batch += _idx_batch
 
     return idx_batch
-
 
 
 def clients_indices_unlabel(list_label2indices: list, num_classes: int, num_clients: int, non_iid_alpha: float, seed=None):
@@ -169,12 +137,10 @@ def clients_indices_unlabel(list_label2indices: list, num_classes: int, num_clie
                                                n_workers=num_clients)
     indices_dirichlet = functools.reduce(lambda x, y: x + y, batch_indices)
     list_client2indices = partition_balance_unlabel(indices_dirichlet, num_clients)
-
     return list_client2indices
 
 
 def partition_balance_unlabel(idxs, num_split: int):
-
     num_per_part, r = len(idxs) // num_split, len(idxs) % num_split
     parts = []
     i, r_used = 0, 0
@@ -186,7 +152,6 @@ def partition_balance_unlabel(idxs, num_split: int):
         else:
             parts.append(idxs[i:(i + num_per_part)])
             i += num_per_part
-
     return parts
 
 
@@ -197,15 +162,11 @@ def build_non_iid_by_dirichlet_unlabel(
     n_auxi_workers = 9
     assert n_auxi_workers <= n_workers
 
-    # random shuffle targets indices.
     random_state.shuffle(indices2targets)
 
-    # partition indices.
     from_index = 0
     splitted_targets = []
-
     num_splits = math.ceil(n_workers / n_auxi_workers)
-
     split_n_workers = [
         n_auxi_workers
         if idx < num_splits - 1
@@ -222,34 +183,25 @@ def build_non_iid_by_dirichlet_unlabel(
         )
         from_index = to_index
 
-    #
     idx_batch = []
     for _targets in splitted_targets:
-        # rebuild _targets.
         _targets = np.array(_targets)
         _targets_size = len(_targets)
-
-        # use auxi_workers for this subset targets.
         _n_workers = min(n_auxi_workers, n_workers)
-        #n_workers=10
         n_workers = n_workers - n_auxi_workers
 
-        # get the corresponding idx_batch.
         min_size = 0
-        _idx_batch = None
+        # FIX: None yerine boş listelerle başlat
+        _idx_batch = [[] for _ in range(_n_workers)]
         while min_size < int(0.50 * _targets_size / _n_workers):
             _idx_batch = [[] for _ in range(_n_workers)]
             for _class in range(num_classes):
-                # get the corresponding indices in the original 'targets' list.
                 idx_class = np.where(_targets[:, 1] == _class)[0]
                 idx_class = _targets[idx_class, 0]
-
-                # sampling.
                 try:
                     proportions = random_state.dirichlet(
                         np.repeat(non_iid_alpha, _n_workers)
                     )
-                    # balance
                     proportions = np.array(
                         [
                             p * (len(idx_j) < _targets_size / _n_workers)
@@ -257,24 +209,18 @@ def build_non_iid_by_dirichlet_unlabel(
                         ]
                     )
                     proportions = proportions / proportions.sum()
-                    proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[
-                        :-1
-                    ]
+                    proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[:-1]
                     _idx_batch = [
                         idx_j + idx.tolist()
-                        for idx_j, idx in zip(
-                            _idx_batch, np.split(idx_class, proportions)
-                        )
+                        for idx_j, idx in zip(_idx_batch, np.split(idx_class, proportions))
                     ]
                     sizes = [len(idx_j) for idx_j in _idx_batch]
                     min_size = min([_size for _size in sizes])
                 except ZeroDivisionError:
                     pass
-        if _idx_batch is not None:
-            idx_batch += _idx_batch
+        idx_batch += _idx_batch
 
     return idx_batch
-
 
 
 def clients_indices_unlabel1(list_label2indices: list, num_classes: int, num_clients: int, non_iid_alpha: float, seed=None):
@@ -291,12 +237,10 @@ def clients_indices_unlabel1(list_label2indices: list, num_classes: int, num_cli
                                                n_workers=num_clients)
     indices_dirichlet = functools.reduce(lambda x, y: x + y, batch_indices)
     list_client2indices = partition_balance_unlabel1(indices_dirichlet, num_clients)
-
     return list_client2indices
 
 
 def partition_balance_unlabel1(idxs, num_split: int):
-
     num_per_part, r = len(idxs) // num_split, len(idxs) % num_split
     parts = []
     i, r_used = 0, 0
@@ -308,7 +252,6 @@ def partition_balance_unlabel1(idxs, num_split: int):
         else:
             parts.append(idxs[i:(i + num_per_part)])
             i += num_per_part
-
     return parts
 
 
@@ -319,15 +262,11 @@ def build_non_iid_by_dirichlet_unlabel1(
     n_auxi_workers = 10
     assert n_auxi_workers <= n_workers
 
-    # random shuffle targets indices.
     random_state.shuffle(indices2targets)
 
-    # partition indices.
     from_index = 0
     splitted_targets = []
-
     num_splits = math.ceil(n_workers / n_auxi_workers)
-
     split_n_workers = [
         n_auxi_workers
         if idx < num_splits - 1
@@ -344,34 +283,25 @@ def build_non_iid_by_dirichlet_unlabel1(
         )
         from_index = to_index
 
-    #
     idx_batch = []
     for _targets in splitted_targets:
-        # rebuild _targets.
         _targets = np.array(_targets)
         _targets_size = len(_targets)
-
-        # use auxi_workers for this subset targets.
         _n_workers = min(n_auxi_workers, n_workers)
-        #n_workers=10
         n_workers = n_workers - n_auxi_workers
 
-        # get the corresponding idx_batch.
         min_size = 0
-        _idx_batch = None
+        # FIX: None yerine boş listelerle başlat
+        _idx_batch = [[] for _ in range(_n_workers)]
         while min_size < int(0.50 * _targets_size / _n_workers):
             _idx_batch = [[] for _ in range(_n_workers)]
             for _class in range(num_classes):
-                # get the corresponding indices in the original 'targets' list.
                 idx_class = np.where(_targets[:, 1] == _class)[0]
                 idx_class = _targets[idx_class, 0]
-
-                # sampling.
                 try:
                     proportions = random_state.dirichlet(
                         np.repeat(non_iid_alpha, _n_workers)
                     )
-                    # balance
                     proportions = np.array(
                         [
                             p * (len(idx_j) < _targets_size / _n_workers)
@@ -379,20 +309,15 @@ def build_non_iid_by_dirichlet_unlabel1(
                         ]
                     )
                     proportions = proportions / proportions.sum()
-                    proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[
-                        :-1
-                    ]
+                    proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[:-1]
                     _idx_batch = [
                         idx_j + idx.tolist()
-                        for idx_j, idx in zip(
-                            _idx_batch, np.split(idx_class, proportions)
-                        )
+                        for idx_j, idx in zip(_idx_batch, np.split(idx_class, proportions))
                     ]
                     sizes = [len(idx_j) for idx_j in _idx_batch]
                     min_size = min([_size for _size in sizes])
                 except ZeroDivisionError:
                     pass
-        if _idx_batch is not None:
-            idx_batch += _idx_batch
+        idx_batch += _idx_batch
 
     return idx_batch
