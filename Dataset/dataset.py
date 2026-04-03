@@ -304,10 +304,26 @@ from Dataset.sample_dirichlet import clients_indices, clients_indices_unlabel
 import time
 
 def classify_label(dataset, num_classes: int):
-    list1 = [[] for _ in range(num_classes)]
-    for idx, datum in enumerate(dataset):
-        list1[datum[1]].append(idx)
-    return list1
+    # list1 = [[] for _ in range(num_classes)]
+    # for idx, datum in enumerate(dataset):
+    #     list1[datum[1]].append(idx)
+    # return list1
+    """
+    HIZLI VERSIYON: Resimleri acmaz, sadece ImageFolder'ın 
+    onceden hazırladıgı targets listesini kullanır.
+    """
+    list_label2indices = [[] for _ in range(num_classes)]
+    
+    # Eger dataset bir Subset ise targets'a ulasmak icin .dataset kullanmalıyız
+    targets = getattr(dataset, 'targets', None)
+    if targets is None and hasattr(dataset, 'base_dataset'):
+        # Senin _SubsetImageFolder sınıfın için:
+        targets = dataset.targets 
+    
+    for idx, label in enumerate(targets):
+        list_label2indices[label].append(idx)
+        
+    return list_label2indices
 
 def show_clients_data_distribution(dataset, clients_indices_labeled, clients_indices_unlabeled, num_classes):
     dict_per_client_labeled = []
