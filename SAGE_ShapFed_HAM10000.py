@@ -805,7 +805,10 @@ def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
     
     print(f"[CKPT] Loading checkpoint: {local_path}")
     try:
-        ckpt = torch.load(local_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        # ckpt = torch.load(local_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        ckpt = torch.load(local_path, 
+                  map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+                  weights_only=False)
         model.load_state_dict(ckpt['model_state_dict'])
         return ckpt['round'] + 1, ckpt['metrics_history']
     except Exception as e:
