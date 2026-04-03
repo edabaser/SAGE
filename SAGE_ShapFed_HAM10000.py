@@ -1259,28 +1259,29 @@ def main_loop(alpha):
 # ══════════════════════════════════════════════════════════════
 #  YARDIMCI
 # ══════════════════════════════════════════════════════════════
-
 class _SubsetImageFolder(torch.utils.data.Dataset):
     def __init__(self, base_dataset, indices, transform=None):
         self.base_dataset = base_dataset
-        self.indices      = indices
-        self.transform    = transform
-        self.targets = [base_dataset.targets[i] for i in indices]
+        self.indices = indices
+        self.transform = transform
+        # Sadece mevcut olan indisleri filtrele (Index out of range hatasini onler)
+        max_len = len(base_dataset)
+        self.valid_indices = [i for i in indices if i < max_len]
+        self.targets = [base_dataset.targets[i] for i in self.valid_indices]
 
-    # Bu metod eksikti, eklendi. PyTorch icin sarttir.
     def __len__(self):
-        return len(self.indices)
+        return len(self.valid_indices)
 
     def __getitem__(self, idx):
         try:
-            real_idx = self.indices[idx]
+            real_idx = self.valid_indices[idx]
             img, label = self.base_dataset[real_idx]
             if self.transform:
                 img = self.transform(img)
             return img, label
         except Exception as e:
-            print(f"Error loading image index {idx}: {e}")
-            return torch.zeros((3, 224, 224)), 0
+            # Hata veren resmi atlamak icin bir sonraki resmi dene
+            return self.__getitem__((idx + 1) % len(self.valid_indices))
 
 # ══════════════════════════════════════════════════════════════
 #  ENTRY POINT
