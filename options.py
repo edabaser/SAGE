@@ -100,14 +100,14 @@ def args_parser():
 
     # --- AWS SageMaker Snipets ---
     parser.add_argument('--checkpoint_dir', type=str, 
-                        default='/home/ec2-user/SageMaker/checkpoints',
+                        default='/home/sagemaker-user/SageMaker/checkpoints',
                         help='Local directory to save checkpoints before S3 sync') 
     
     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda',
                         help='The name of your S3 bucket')
     
     parser.add_argument('--path_ham10000', type=str, 
-                        default='/home/ec2-user/SageMaker/data/HAM10000/',
+                        default='/home/sagemaker-user/SageMaker/data/HAM10000/',
                         help='Local path where S3 data will be synced')
 
     # --- Dataset Paths (Digerleri) ---
