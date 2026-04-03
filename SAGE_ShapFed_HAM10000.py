@@ -966,13 +966,13 @@ class Local(object):
             dataset=data_client_labeled,
             sampler=RandomSampler(data_client_labeled),
             batch_size=args.batch_size_local_labeled_fixmatch,
-            drop_last=True, num_workers=0, pin_memory=False
+            drop_last=True, num_workers=4, pin_memory=False
         )
         self.unlabeled_trainloader = DataLoader(
             dataset=data_client_unlabeled,
             sampler=RandomSampler(data_client_unlabeled),
             batch_size=args.batch_size_local_labeled_fixmatch * args.mu,
-            drop_last=True, num_workers=0, pin_memory=False
+            drop_last=True, num_workers=4, pin_memory=False
         )
         self.local_model.load_state_dict(global_params)
         self.local_model.train()
@@ -1161,10 +1161,13 @@ def main_loop(alpha):
     print(f"Local checkpoint dir : {local_ckpt_dir}")
 
     random_state = np.random.RandomState(args.seed)
+    print("--> Sınıf bazlı indeksleme başlıyor...")
     list_label2indices = classify_label(data_local_training, args.num_classes)
+    print(f"--> Sınıflandırma bitti. Labeled/Unlabeled ayrılıyor (Labeled: {args.num_labeled})...")
     list_label2indices_labeled, list_label2indices_unlabeled = partition_train(
         list_label2indices, args.num_labeled
     )
+    print(f"--> Dirichlet Dağılımı hesaplanıyor (Alpha: {alpha})...")
 
     if alpha == 0:
         list_client2indices_labeled   = clients_indices_homo(
@@ -1174,6 +1177,7 @@ def main_loop(alpha):
     else:
         list_client2indices_labeled   = clients_indices(
             list_label2indices_labeled, args.num_classes, args.num_clients, alpha, seed=0)
+        print("--> Dağılım hesaplandı, eğitim başlıyor!")
         list_client2indices_unlabeled = clients_indices(
             list_label2indices_unlabeled, args.num_classes, args.num_clients, alpha, seed=0)
 
