@@ -1262,7 +1262,7 @@ def main_loop(alpha):
             r, global_model.download_params(), metrics_history,
             local_ckpt_dir=local_ckpt_dir,
             args=args,
-            backup_every=10
+            backup_every=3
         )
 
         result_dir  = f'./results/{args.dataset}'
