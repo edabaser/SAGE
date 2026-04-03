@@ -1090,7 +1090,7 @@ def sync_data_from_s3(args):
 
 def main_loop(alpha):
     args = args_parser()
-    
+    args.s3_bucket = 'sage-ham10k-eda'
     # Veriyi S3'ten EBS'e cekiyoruz (Burasi cok onemli)
     sync_data_from_s3(args)
 
