@@ -106,9 +106,12 @@ def args_parser():
     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda',
                         help='The name of your S3 bucket')
     
-    parser.add_argument('--path_ham10000', type=str, 
+    # parser.add_argument('--path_ham10000', type=str, 
                         default='/home/sagemaker-user/SageMaker/data/HAM10000/',
                         help='Local path where S3 data will be synced')
+  
+    parser.add_argument('--path_ham10000', type=str, default='/home/sagemaker-user/SAGE/data/HAM10000/')
+
 
     # --- Dataset Paths (Digerleri) ---
     parser.add_argument('--path_cifar10', type=str, default='./data/CIFAR10/')
