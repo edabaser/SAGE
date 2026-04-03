@@ -146,9 +146,9 @@ def args_parser():
 
     # --- Egitim Parametreleri ---
     parser.add_argument('--local_epochs', type=int, default=5)
-    parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=24) 
-    parser.add_argument('--batch_size_local_labeled', type=int, default=24)  
-    parser.add_argument('--batch_size_local_unlabeled', type=int, default=24)
+    parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=16) #24-->16
+    parser.add_argument('--batch_size_local_labeled', type=int, default=16)  
+    parser.add_argument('--batch_size_local_unlabeled', type=int, default=16)
     parser.add_argument('--batch_size_test', type=int, default=128)
     parser.add_argument('--lr_local_training', type=float, default=0.03)
     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
