@@ -930,6 +930,8 @@ class Global(object):
         accuracy = num_corrects / len(data_test)
         acsa     = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
         macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
+        # --- BURAYA EKLE: Test bittikten sonra GPU temizliği ---
+        torch.cuda.empty_cache()
         return accuracy, acsa, macro_f1
 
     def download_params(self):
@@ -966,13 +968,13 @@ class Local(object):
             dataset=data_client_labeled,
             sampler=RandomSampler(data_client_labeled),
             batch_size=args.batch_size_local_labeled_fixmatch,
-            drop_last=True, num_workers=4, pin_memory=False
+            drop_last=True, num_workers=*, pin_memory=False
         )
         self.unlabeled_trainloader = DataLoader(
             dataset=data_client_unlabeled,
             sampler=RandomSampler(data_client_unlabeled),
             batch_size=args.batch_size_local_labeled_fixmatch * args.mu,
-            drop_last=True, num_workers=4, pin_memory=False
+            drop_last=True, num_workers=0, pin_memory=False
         )
         self.local_model.load_state_dict(global_params)
         self.local_model.train()
@@ -1052,7 +1054,15 @@ class Local(object):
                 loss.backward()
                 self.optimizer.step()
 
-        return copy.deepcopy(self.local_model.state_dict())
+        
+                final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
+                # Ağırlıkları CPU'ya çekerek kopyala (Bellek birikmesini önler)
+                final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
+                
+                # GPU'daki gradyanları tamamen temizle
+                self.optimizer.zero_grad(set_to_none=True)
+            
+                return final_state
 
     def interleave(self, x, size):
         s = list(x.shape)
@@ -1214,6 +1224,9 @@ def main_loop(alpha):
                 copy.deepcopy(dict_global_params), r
             )
             list_dicts_local_params.append(copy.deepcopy(local_params))
+
+            del local_params
+            torch.cuda.empty_cache()
 
         fedavg_params = global_model.initialize_for_model_fusion(
             args, list_dicts_local_params, list_nums_local_data, dict_global_params
