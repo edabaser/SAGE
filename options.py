@@ -130,16 +130,21 @@ import os
 def args_parser():
     parser = argparse.ArgumentParser()
     
+    # --- Donanim ve Veriseti ---
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--dataset', type=str, default='HAM10000') 
     parser.add_argument('--num_clients', type=int, default=20)
     parser.add_argument('--num_online_clients', type=int, default=8)
+
+    # --- SAGE/FixMatch Parametreleri ---
     parser.add_argument('--mu', default=2, type=int)
     parser.add_argument('--alpha', type=float, default=0.1)
     parser.add_argument('--threshold', default=0.95, type=float)
     parser.add_argument('--lambda_u', default=1, type=float)
     parser.add_argument('--kappa', default=0.5, type=float)
     parser.add_argument('--T', default=1, type=float)
+
+    # --- Egitim Parametreleri ---
     parser.add_argument('--local_epochs', type=int, default=5)
     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=24) 
     parser.add_argument('--batch_size_local_labeled', type=int, default=24)  
@@ -147,14 +152,22 @@ def args_parser():
     parser.add_argument('--batch_size_test', type=int, default=128)
     parser.add_argument('--lr_local_training', type=float, default=0.03)
     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
+
+    # --- Aggregation ve Shapley ---
     parser.add_argument('--aggregation_method', type=str, default='ShapFed') 
     parser.add_argument('--shapley_samples', type=int, default=10)
-    
-    # AWS YOLLARI
+
+    # --- AWS SageMaker / S3 Yollari ---
+    # Not: Klasor yollarinin sonundaki / isaretine dikkat
     parser.add_argument('--checkpoint_dir', type=str, default='/home/sagemaker-user/SAGE/checkpoints') 
     parser.add_argument('--path_ham10000', type=str, default='/home/sagemaker-user/SAGE/data/HAM10000/')
     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
     
+    # --- Diger ---
+    parser.add_argument('--path_cifar10', type=str, default='./data/CIFAR10/')
+    parser.add_argument('--path_cifar100', type=str, default='./data/CIFAR100/')
+    parser.add_argument('--path_svhn', type=str, default='./data/SVHN/')
+    parser.add_argument('--path_cinic10', type=str, default='./data/CINIC10/')
     parser.add_argument('--seed', type=int, default=7)
     
     args = parser.parse_args()
