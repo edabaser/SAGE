@@ -717,11 +717,42 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 #     else:
 #         print("[CKPT] No checkpoint found. Starting from Round 1.")
 #         return 1, {'acc': [], 'acsa': [], 'f1': []}
+
+
+
+
+import os
+import copy
+import random
+import logging
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from tqdm import tqdm
 import boto3
 from botocore.exceptions import ClientError
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader, RandomSampler
+from torchvision.datasets import ImageFolder
+from sklearn.metrics import recall_score, f1_score
+from sklearn.model_selection import train_test_split
+
+# Custom Modülleriniz (Repo'dan gelen)
+from Model.resnet import ResNet
+from options import args_parser
+from Dataset.dataset import (classify_label, show_clients_data_distribution,
+                              Indices2Dataset_labeled,
+                              Indices2Dataset_unlabeled_fixmatch, partition_train)
+from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
+
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
 
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
-                    args, filename='checkpoint.pt', drive_backup_every=10):
+                    args, filename='checkpoint.pt', backup_every=10):
     
     os.makedirs(local_ckpt_dir, exist_ok=True)
     state = {
@@ -731,37 +762,44 @@ def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
     }
     local_path = os.path.join(local_ckpt_dir, filename)
     torch.save(state, local_path)
-    print(f"[CKPT] Round {round_num} saved locally.")
+    print(f"[CKPT] Round {round_num:>4} saved locally.")
 
-    # Upload to S3 every X rounds
-    if round_num % drive_backup_every == 0:
+    # S3'e her X round'da bir yedekle
+    if round_num % backup_every == 0:
         s3 = boto3.client('s3')
-        s3_path = f"checkpoints/{args.dataset}_{args.aggregation_method}/checkpoint.pt"
+        # S3'te duzenli bir klasor yapisi olusturur
+        s3_path = f"checkpoints/{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}/{filename}"
         try:
             s3.upload_file(local_path, args.s3_bucket, s3_path)
             print(f"[CKPT] S3 backup successful: s3://{args.s3_bucket}/{s3_path}")
         except Exception as e:
             print(f"[ERROR] S3 Upload failed: {e}")
 
+
 def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
     s3 = boto3.client('s3')
     local_path = os.path.join(local_ckpt_dir, filename)
-    s3_path = f"checkpoints/{args.dataset}_{args.aggregation_method}/checkpoint.pt"
+    s3_path = f"checkpoints/{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}/{filename}"
 
-    # Try to download from S3 if local doesn't exist
+    # Eger local'de checkpoint yoksa S3'ten indirmeyi dene
     if not os.path.exists(local_path):
         try:
-            print("Downloading checkpoint from S3...")
+            print(f"Downloading checkpoint from S3: s3://{args.s3_bucket}/{s3_path}")
             os.makedirs(local_ckpt_dir, exist_ok=True)
             s3.download_file(args.s3_bucket, s3_path, local_path)
         except ClientError:
             print("No checkpoint found on S3. Starting fresh.")
             return 1, {'acc': [], 'acsa': [], 'f1': []}
 
-    # Standard loading logic...
-    ckpt = torch.load(local_path, map_location='cuda' if torch.cuda.is_available() else 'cpu')
-    model.load_state_dict(ckpt['model_state_dict'])
-    return ckpt['round'] + 1, ckpt['metrics_history']
+    print(f"[CKPT] Loading checkpoint: {local_path}")
+    try:
+        ckpt = torch.load(local_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        model.load_state_dict(ckpt['model_state_dict'])
+        return ckpt['round'] + 1, ckpt['metrics_history']
+    except Exception as e:
+        print(f"[CKPT] Load error: {e}  →  Starting from scratch.")
+        return 1, {'acc': [], 'acsa': [], 'f1': []}
+
 
 # ══════════════════════════════════════════════════════════════
 #  SHAPLEY  (CSSV)
@@ -912,10 +950,6 @@ class Local(object):
         )
 
     def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r):
-        # BUG FIX 1: parametre adları düzeltildi (data_client_ → data_client_labeled,
-        #            data_client_un → data_client_unlabeled)
-        # BUG FIX 2: self._trainloader → self.labeled_trainloader
-        # BUG FIX 3: args.batch_size_local_fixmatch → args.batch_size_local_labeled_fixmatch
         self.labeled_trainloader = DataLoader(
             dataset=data_client_labeled,
             sampler=RandomSampler(data_client_labeled),
@@ -1018,29 +1052,35 @@ class Local(object):
 
 
 # ══════════════════════════════════════════════════════════════
-#  MAIN LOOP
+#  S3 SYNC FONKSIYONU
 # ══════════════════════════════════════════════════════════════
 
-def main_loop(alpha):
-  
-  def sync_data_from_s3(args):
+def sync_data_from_s3(args):
     """
-    Uses AWS CLI to sync the folder. This is much faster than 
-    looping through individual files in Python.
+    S3 bucket'indan verileri hizlica indirir.
     """
     local_path = args.path_ham10000
-    s3_uri = f"s3://{args.s3_bucket}/HAM10000/" # Adjust folder name if needed
+    s3_uri = f"s3://{args.s3_bucket}/HAM10000/" 
     
-    if not os.path.exists(local_path) or len(os.listdir(local_path)) < 5:
+    # Eger klasor yoksa veya bossa indir
+    if not os.path.exists(local_path) or not os.listdir(local_path):
         print(f"Syncing data from {s3_uri} to {local_path}...")
         os.makedirs(local_path, exist_ok=True)
-        # Standard AWS CLI command (fastest way to move 10k images)
+        # AWS CLI komutu (boto3'ten cok daha hizli binlerce kucuk resim icin)
         os.system(f"aws s3 sync {s3_uri} {local_path} --quiet")
         print("Data sync complete.")
     else:
         print("Data already exists locally. Skipping sync.")
-      
+
+# ══════════════════════════════════════════════════════════════
+#  MAIN LOOP
+# ══════════════════════════════════════════════════════════════
+
+def main_loop(alpha):
     args = args_parser()
+    
+    # Veriyi S3'ten EBS'e cekiyoruz (Burasi cok onemli)
+    sync_data_from_s3(args)
 
     log_dir  = f'./results/{args.dataset}/logs'
     os.makedirs(log_dir, exist_ok=True)
@@ -1052,34 +1092,7 @@ def main_loop(alpha):
         filemode='a'
     )
 
-    if args.dataset == 'CIFAR10':
-        args.num_classes = 10;  args.num_labeled = 500;  args.num_rounds = 600
-        transform_test = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        data_local_training = datasets.CIFAR10(args.path_cifar10, train=True,  download=True, transform=None)
-        data_global_test    = datasets.CIFAR10(args.path_cifar10, train=False, transform=transform_test)
-
-    elif args.dataset == 'CIFAR100':
-        args.num_classes = 100;  args.num_labeled = 50;  args.num_rounds = 500
-        transform_test = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
-        ])
-        data_local_training = datasets.CIFAR100(args.path_cifar100, train=True,  download=True, transform=None)
-        data_global_test    = datasets.CIFAR100(args.path_cifar100, train=False, transform=transform_test)
-
-    elif args.dataset == 'SVHN':
-        args.num_classes = 10;  args.num_labeled = 460;  args.num_rounds = 300
-        transform_test = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970)),
-        ])
-        data_local_training = datasets.SVHN(args.path_svhn, split='train', download=True, transform=None)
-        data_global_test    = datasets.SVHN(args.path_svhn, split='test',  download=True, transform=transform_test)
-
-    elif args.dataset == 'HAM10000':
+    if args.dataset == 'HAM10000':
         args.num_classes = 7
         args.num_labeled = 1000
         args.num_rounds  = 400
@@ -1094,7 +1107,6 @@ def main_loop(alpha):
 
         full_dataset = ImageFolder(root=args.path_ham10000, transform=None)
 
-        from sklearn.model_selection import train_test_split
         all_indices = list(range(len(full_dataset)))
         all_targets = [full_dataset.targets[i] for i in all_indices]
 
@@ -1119,17 +1131,15 @@ def main_loop(alpha):
         print(f"[HAM10000] Test  dist: { {cls_names[k]: v for k,v in sorted(test_cls.items())} }")
 
     else:
-        print(f"[ERROR] Unknown dataset: {args.dataset}")
+        print(f"[ERROR] AWS senaryosu sadece HAM10000 icin kuruldu. {args.dataset} secildi.")
         exit(1)
 
-    drive_ckpt_dir = os.path.join(
+    # AWS icin yerel EBS'de checkpoints klasorunu duzenliyoruz
+    local_ckpt_dir = os.path.join(
         args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
     )
-    local_ckpt_dir = f'/content/checkpoints/{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
     os.makedirs(local_ckpt_dir, exist_ok=True)
-    os.makedirs(drive_ckpt_dir, exist_ok=True)
-    print(f"Local  checkpoint dir : {local_ckpt_dir}")
-    print(f"Drive  checkpoint dir : {drive_ckpt_dir}")
+    print(f"Local checkpoint dir : {local_ckpt_dir}")
 
     random_state = np.random.RandomState(args.seed)
     list_label2indices = classify_label(data_local_training, args.num_classes)
@@ -1154,8 +1164,9 @@ def main_loop(alpha):
     global_model = Global(args)
     local_model  = Local(args)
 
+    # args parametresini load_checkpoint'e ekledik
     start_round, metrics_history = load_checkpoint(
-        global_model.model, local_ckpt_dir, drive_ckpt_dir
+        global_model.model, local_ckpt_dir, args
     )
 
     total_clients          = list(range(args.num_clients))
@@ -1207,11 +1218,12 @@ def main_loop(alpha):
             f"Best Acc: {best_acc:.4f} | Best ACSA: {best_acsa:.4f} | Best F1: {best_f1:.4f}"
         )
 
+        # Parametreleri ve args'i save_checkpoint'e gonderiyoruz
         save_checkpoint(
             r, global_model.download_params(), metrics_history,
             local_ckpt_dir=local_ckpt_dir,
-            drive_ckpt_dir=drive_ckpt_dir,
-            drive_backup_every=10
+            args=args,
+            backup_every=10
         )
 
         result_dir  = f'./results/{args.dataset}'
@@ -1230,21 +1242,6 @@ def main_loop(alpha):
 #  YARDIMCI
 # ══════════════════════════════════════════════════════════════
 
-# class _SubsetImageFolder(torch.utils.data.Dataset):
-#     def __init__(self, base_dataset, indices, transform=None):
-#         self.base_dataset = base_dataset
-#         self.indices      = indices
-#         self.transform    = transform
-#         self.targets = [base_dataset.targets[i] for i in indices]
-
-#     def __len__(self):
-#         return len(self.indices)
-
-#     def __getitem__(self, idx):
-#         real_idx = self.indices[idx]
-#         img, label = self.base_dataset[real_idx]
-#         return img, label
-
 class _SubsetImageFolder(torch.utils.data.Dataset):
     def __init__(self, base_dataset, indices, transform=None):
         self.base_dataset = base_dataset
@@ -1252,18 +1249,21 @@ class _SubsetImageFolder(torch.utils.data.Dataset):
         self.transform    = transform
         self.targets = [base_dataset.targets[i] for i in indices]
 
+    # Bu metod eksikti, eklendi. PyTorch icin sarttir.
+    def __len__(self):
+        return len(self.indices)
+
     def __getitem__(self, idx):
         try:
             real_idx = self.indices[idx]
             img, label = self.base_dataset[real_idx]
-            # Apply transform if it exists and wasn't applied by base_dataset
             if self.transform:
                 img = self.transform(img)
             return img, label
         except Exception as e:
             print(f"Error loading image index {idx}: {e}")
-            # Return a dummy or handle error
             return torch.zeros((3, 224, 224)), 0
+
 # ══════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════
