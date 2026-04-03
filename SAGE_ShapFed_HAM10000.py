@@ -1150,6 +1150,12 @@ def main_loop(alpha):
     local_ckpt_dir = os.path.join(
         args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
     )
+    
+    # drive_ckpt_dir'i silebiliriz veya hata vermemesi için local ile aynı yapabiliriz
+    drive_ckpt_dir = local_ckpt_dir 
+
+    os.makedirs(local_ckpt_dir, exist_ok=True)
+    print(f"Local  checkpoint dir : {local_ckpt_dir}")
     os.makedirs(local_ckpt_dir, exist_ok=True)
     print(f"Local checkpoint dir : {local_ckpt_dir}")
 
