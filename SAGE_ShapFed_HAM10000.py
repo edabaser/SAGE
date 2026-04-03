@@ -649,8 +649,80 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 #  CHECKPOINT
 # ══════════════════════════════════════════════════════════════
 
-def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
-                    drive_ckpt_dir=None, filename='checkpoint.pt', drive_backup_every=10):
+# def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
+#                     drive_ckpt_dir=None, filename='checkpoint.pt', drive_backup_every=10):
+#     os.makedirs(local_ckpt_dir, exist_ok=True)
+#     state = {
+#         'round': round_num,
+#         'model_state_dict': model_state,
+#         'metrics_history': metrics_history,
+#     }
+#     local_path = os.path.join(local_ckpt_dir, filename)
+#     torch.save(state, local_path)
+#     print(f"[CKPT] Round {round_num:>4} → local: {local_path}")
+
+#     if drive_ckpt_dir and (round_num % drive_backup_every == 0):
+#         os.makedirs(drive_ckpt_dir, exist_ok=True)
+#         drive_path = os.path.join(drive_ckpt_dir, filename)
+#         shutil.copy2(local_path, drive_path)
+#         print(f"[CKPT] Drive backup → {drive_path}")
+
+
+# def load_checkpoint(model, local_ckpt_dir, drive_ckpt_dir=None, filename='checkpoint.pt'):
+#     local_path = os.path.join(local_ckpt_dir, filename)
+
+#     if not os.path.exists(local_path) and drive_ckpt_dir:
+#         drive_path = os.path.join(drive_ckpt_dir, filename)
+#         if os.path.exists(drive_path):
+#             os.makedirs(local_ckpt_dir, exist_ok=True)
+#             shutil.copy2(drive_path, local_path)
+#             print(f"[CKPT] Copied checkpoint from Drive → {local_path}")
+
+#     if os.path.exists(local_path):
+#         print(f"[CKPT] Loading checkpoint: {local_path}")
+#         try:
+#             ckpt = torch.load(local_path,
+#                               map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+#             model.load_state_dict(ckpt['model_state_dict'])
+#             start_round = ckpt['round'] + 1
+
+#             if 'metrics_history' in ckpt:
+#                 metrics_history = ckpt['metrics_history']
+#             elif 'fedavg_acc' in ckpt:
+#                 old = ckpt['fedavg_acc']
+#                 if old and isinstance(old[0], (list, tuple)):
+#                     metrics_history = {
+#                         'acc':  [x[0] for x in old],
+#                         'acsa': [x[1] for x in old],
+#                         'f1':   [x[2] for x in old],
+#                     }
+#                 else:
+#                     metrics_history = {'acc': list(old), 'acsa': [], 'f1': []}
+#             else:
+#                 metrics_history = {'acc': [], 'acsa': [], 'f1': []}
+
+#             if metrics_history['acc']:
+#                 best_acc  = max(metrics_history['acc'])
+#                 best_acsa = max(metrics_history['acsa']) if metrics_history['acsa'] else 0.0
+#                 best_f1   = max(metrics_history['f1'])   if metrics_history['f1']   else 0.0
+#                 last_acc  = metrics_history['acc'][-1]
+#                 print(f"[CKPT] Resuming from Round {start_round}")
+#                 print(f"       Last  Acc : {last_acc:.4f}")
+#                 print(f"       Best  Acc : {best_acc:.4f} | ACSA: {best_acsa:.4f} | F1: {best_f1:.4f}")
+#             return start_round, metrics_history
+
+#         except Exception as e:
+#             print(f"[CKPT] Load error: {e}  →  Starting from scratch.")
+#             return 1, {'acc': [], 'acsa': [], 'f1': []}
+#     else:
+#         print("[CKPT] No checkpoint found. Starting from Round 1.")
+#         return 1, {'acc': [], 'acsa': [], 'f1': []}
+import boto3
+from botocore.exceptions import ClientError
+
+def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
+                    args, filename='checkpoint.pt', drive_backup_every=10):
+    
     os.makedirs(local_ckpt_dir, exist_ok=True)
     state = {
         'round': round_num,
@@ -659,65 +731,37 @@ def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
     }
     local_path = os.path.join(local_ckpt_dir, filename)
     torch.save(state, local_path)
-    print(f"[CKPT] Round {round_num:>4} → local: {local_path}")
+    print(f"[CKPT] Round {round_num} saved locally.")
 
-    if drive_ckpt_dir and (round_num % drive_backup_every == 0):
-        os.makedirs(drive_ckpt_dir, exist_ok=True)
-        drive_path = os.path.join(drive_ckpt_dir, filename)
-        shutil.copy2(local_path, drive_path)
-        print(f"[CKPT] Drive backup → {drive_path}")
-
-
-def load_checkpoint(model, local_ckpt_dir, drive_ckpt_dir=None, filename='checkpoint.pt'):
-    local_path = os.path.join(local_ckpt_dir, filename)
-
-    if not os.path.exists(local_path) and drive_ckpt_dir:
-        drive_path = os.path.join(drive_ckpt_dir, filename)
-        if os.path.exists(drive_path):
-            os.makedirs(local_ckpt_dir, exist_ok=True)
-            shutil.copy2(drive_path, local_path)
-            print(f"[CKPT] Copied checkpoint from Drive → {local_path}")
-
-    if os.path.exists(local_path):
-        print(f"[CKPT] Loading checkpoint: {local_path}")
+    # Upload to S3 every X rounds
+    if round_num % drive_backup_every == 0:
+        s3 = boto3.client('s3')
+        s3_path = f"checkpoints/{args.dataset}_{args.aggregation_method}/checkpoint.pt"
         try:
-            ckpt = torch.load(local_path,
-                              map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-            model.load_state_dict(ckpt['model_state_dict'])
-            start_round = ckpt['round'] + 1
-
-            if 'metrics_history' in ckpt:
-                metrics_history = ckpt['metrics_history']
-            elif 'fedavg_acc' in ckpt:
-                old = ckpt['fedavg_acc']
-                if old and isinstance(old[0], (list, tuple)):
-                    metrics_history = {
-                        'acc':  [x[0] for x in old],
-                        'acsa': [x[1] for x in old],
-                        'f1':   [x[2] for x in old],
-                    }
-                else:
-                    metrics_history = {'acc': list(old), 'acsa': [], 'f1': []}
-            else:
-                metrics_history = {'acc': [], 'acsa': [], 'f1': []}
-
-            if metrics_history['acc']:
-                best_acc  = max(metrics_history['acc'])
-                best_acsa = max(metrics_history['acsa']) if metrics_history['acsa'] else 0.0
-                best_f1   = max(metrics_history['f1'])   if metrics_history['f1']   else 0.0
-                last_acc  = metrics_history['acc'][-1]
-                print(f"[CKPT] Resuming from Round {start_round}")
-                print(f"       Last  Acc : {last_acc:.4f}")
-                print(f"       Best  Acc : {best_acc:.4f} | ACSA: {best_acsa:.4f} | F1: {best_f1:.4f}")
-            return start_round, metrics_history
-
+            s3.upload_file(local_path, args.s3_bucket, s3_path)
+            print(f"[CKPT] S3 backup successful: s3://{args.s3_bucket}/{s3_path}")
         except Exception as e:
-            print(f"[CKPT] Load error: {e}  →  Starting from scratch.")
-            return 1, {'acc': [], 'acsa': [], 'f1': []}
-    else:
-        print("[CKPT] No checkpoint found. Starting from Round 1.")
-        return 1, {'acc': [], 'acsa': [], 'f1': []}
+            print(f"[ERROR] S3 Upload failed: {e}")
 
+def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
+    s3 = boto3.client('s3')
+    local_path = os.path.join(local_ckpt_dir, filename)
+    s3_path = f"checkpoints/{args.dataset}_{args.aggregation_method}/checkpoint.pt"
+
+    # Try to download from S3 if local doesn't exist
+    if not os.path.exists(local_path):
+        try:
+            print("Downloading checkpoint from S3...")
+            os.makedirs(local_ckpt_dir, exist_ok=True)
+            s3.download_file(args.s3_bucket, s3_path, local_path)
+        except ClientError:
+            print("No checkpoint found on S3. Starting fresh.")
+            return 1, {'acc': [], 'acsa': [], 'f1': []}
+
+    # Standard loading logic...
+    ckpt = torch.load(local_path, map_location='cuda' if torch.cuda.is_available() else 'cpu')
+    model.load_state_dict(ckpt['model_state_dict'])
+    return ckpt['round'] + 1, ckpt['metrics_history']
 
 # ══════════════════════════════════════════════════════════════
 #  SHAPLEY  (CSSV)
@@ -978,6 +1022,24 @@ class Local(object):
 # ══════════════════════════════════════════════════════════════
 
 def main_loop(alpha):
+  
+  def sync_data_from_s3(args):
+    """
+    Uses AWS CLI to sync the folder. This is much faster than 
+    looping through individual files in Python.
+    """
+    local_path = args.path_ham10000
+    s3_uri = f"s3://{args.s3_bucket}/HAM10000/" # Adjust folder name if needed
+    
+    if not os.path.exists(local_path) or len(os.listdir(local_path)) < 5:
+        print(f"Syncing data from {s3_uri} to {local_path}...")
+        os.makedirs(local_path, exist_ok=True)
+        # Standard AWS CLI command (fastest way to move 10k images)
+        os.system(f"aws s3 sync {s3_uri} {local_path} --quiet")
+        print("Data sync complete.")
+    else:
+        print("Data already exists locally. Skipping sync.")
+      
     args = args_parser()
 
     log_dir  = f'./results/{args.dataset}/logs'
@@ -1168,6 +1230,21 @@ def main_loop(alpha):
 #  YARDIMCI
 # ══════════════════════════════════════════════════════════════
 
+# class _SubsetImageFolder(torch.utils.data.Dataset):
+#     def __init__(self, base_dataset, indices, transform=None):
+#         self.base_dataset = base_dataset
+#         self.indices      = indices
+#         self.transform    = transform
+#         self.targets = [base_dataset.targets[i] for i in indices]
+
+#     def __len__(self):
+#         return len(self.indices)
+
+#     def __getitem__(self, idx):
+#         real_idx = self.indices[idx]
+#         img, label = self.base_dataset[real_idx]
+#         return img, label
+
 class _SubsetImageFolder(torch.utils.data.Dataset):
     def __init__(self, base_dataset, indices, transform=None):
         self.base_dataset = base_dataset
@@ -1175,15 +1252,18 @@ class _SubsetImageFolder(torch.utils.data.Dataset):
         self.transform    = transform
         self.targets = [base_dataset.targets[i] for i in indices]
 
-    def __len__(self):
-        return len(self.indices)
-
     def __getitem__(self, idx):
-        real_idx = self.indices[idx]
-        img, label = self.base_dataset[real_idx]
-        return img, label
-
-
+        try:
+            real_idx = self.indices[idx]
+            img, label = self.base_dataset[real_idx]
+            # Apply transform if it exists and wasn't applied by base_dataset
+            if self.transform:
+                img = self.transform(img)
+            return img, label
+        except Exception as e:
+            print(f"Error loading image index {idx}: {e}")
+            # Return a dummy or handle error
+            return torch.zeros((3, 224, 224)), 0
 # ══════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════
