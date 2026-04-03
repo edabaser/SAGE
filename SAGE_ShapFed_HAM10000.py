@@ -968,7 +968,7 @@ class Local(object):
             dataset=data_client_labeled,
             sampler=RandomSampler(data_client_labeled),
             batch_size=args.batch_size_local_labeled_fixmatch,
-            drop_last=True, num_workers=*, pin_memory=False
+            drop_last=True, num_workers=0, pin_memory=False
         )
         self.unlabeled_trainloader = DataLoader(
             dataset=data_client_unlabeled,
