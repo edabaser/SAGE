@@ -1068,22 +1068,23 @@ class Local(object):
 # ══════════════════════════════════════════════════════════════
 
 def sync_data_from_s3(args):
-    """
-    S3 bucket'indan verileri hizlica indirir.
-    """
-    local_path = args.path_ham10000
-    s3_uri = f"s3://{args.s3_bucket}/HAM10000/" 
+    # """
+    # S3 bucket'indan verileri hizlica indirir.
+    # """
+    # local_path = args.path_ham10000
+    # s3_uri = f"s3://{args.s3_bucket}/HAM10000/" 
     
-    # Eger klasor yoksa veya bossa indir
-    if not os.path.exists(local_path) or not os.listdir(local_path):
-        print(f"Syncing data from {s3_uri} to {local_path}...")
-        os.makedirs(local_path, exist_ok=True)
-        # AWS CLI komutu (boto3'ten cok daha hizli binlerce kucuk resim icin)
-        os.system(f"aws s3 sync {s3_uri} {local_path} --quiet")
-        print("Data sync complete.")
-    else:
-        print("Data already exists locally. Skipping sync.")
-
+    # # Eger klasor yoksa veya bossa indir
+    # if not os.path.exists(local_path) or not os.listdir(local_path):
+    #     print(f"Syncing data from {s3_uri} to {local_path}...")
+    #     os.makedirs(local_path, exist_ok=True)
+    #     # AWS CLI komutu (boto3'ten cok daha hizli binlerce kucuk resim icin)
+    #     os.system(f"aws s3 sync {s3_uri} {local_path} --quiet")
+    #     print("Data sync complete.")
+    # else:
+    #     print("Data already exists locally. Skipping sync.")
+    print("Skipping S3 sync, using local data on NVMe.")
+    pass
 # ══════════════════════════════════════════════════════════════
 #  MAIN LOOP
 # ══════════════════════════════════════════════════════════════
