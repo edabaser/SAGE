@@ -752,7 +752,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
-                    args, filename='checkpoint.pt', backup_every=10):
+                    args, filename='checkpoint.pt', backup_every=3):
     
     # Dinamik klasör ismi oluşturma: HAM10000_a0.1_ShapFed_L1000
     folder_name = f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
