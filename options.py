@@ -160,7 +160,7 @@ def args_parser():
     # --- AWS SageMaker / S3 Yollari ---
     # Not: Klasor yollarinin sonundaki / isaretine dikkat
     parser.add_argument('--checkpoint_dir', type=str, default='/home/sagemaker-user/SAGE/checkpoints') 
-    parser.add_argument('--path_ham10000', type=str, default='/home/sagemaker-user/SAGE/data/HAM10000/')
+    parser.add_argument('--path_ham10000', type=str, default='/mnt/sagemaker-nvme/SAGE/data/sage-ham10k-eda')
     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
     
     # --- Diger ---
