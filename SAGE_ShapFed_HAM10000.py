@@ -29,7 +29,7 @@
 # # ══════════════════════════════════════════════════════════════
 
 # def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
-#                     drive_ckpt_dir=None, filename='checkpoint.pt', drive_backup_every=10):
+#                     drive_ckpt_dir=None, filename='checkpoint.pt', drive_backup_every=3):
 #     """
 #     Her round local_ckpt_dir'e yazar.
 #     drive_backup_every katı olan roundlarda drive_ckpt_dir'e de kopyalar.
@@ -59,8 +59,8 @@
 #     local_path = os.path.join(local_ckpt_dir, filename)
 
 #     # Local'de yoksa Drive'dan getir
-#     if not os.path.exists(local_path) and drive_ckpt_dir:
-#         drive_path = os.path.join(drive_ckpt_dir, filename)
+#     if not os.path.exists(local_path) and :
+#         drive_path = os.path.join(, filename)
 #         if os.path.exists(drive_path):
 #             os.makedirs(local_ckpt_dir, exist_ok=True)
 #             shutil.copy2(drive_path, local_path)
@@ -650,7 +650,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # ══════════════════════════════════════════════════════════════
 
 # def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
-#                     drive_ckpt_dir=None, filename='checkpoint.pt', drive_backup_every=10):
+#                     drive_ckpt_dir=None, filename='checkpoint.pt', drive_backup_every=3):
 #     os.makedirs(local_ckpt_dir, exist_ok=True)
 #     state = {
 #         'round': round_num,
@@ -754,34 +754,46 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
                     args, filename='checkpoint.pt', backup_every=10):
     
+    # Dinamik klasör ismi oluşturma: HAM10000_a0.1_ShapFed_L1000
+    folder_name = f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
+    
     os.makedirs(local_ckpt_dir, exist_ok=True)
     state = {
         'round': round_num,
         'model_state_dict': model_state,
         'metrics_history': metrics_history,
+        'args': args # Argümanları da içine gömelim ki neyle eğittiğimizi unutmayalım
     }
+    
     local_path = os.path.join(local_ckpt_dir, filename)
     torch.save(state, local_path)
-    print(f"[CKPT] Round {round_num:>4} saved locally.")
-
-    # S3'e her X round'da bir yedekle
-    if round_num % backup_every == 0:
+    
+    # S3'e yedekleme (Periyodik veya son round ise)
+    if round_num % backup_every == 0 or round_num == args.num_rounds:
         s3 = boto3.client('s3')
-        # S3'te duzenli bir klasor yapisi olusturur
-        s3_path = f"checkpoints/{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}/{filename}"
+        # S3 Yolu: checkpoints/HAM10000_a0.1_ShapFed_L1000/checkpoint.pt
+        s3_ckpt_path = f"checkpoints/{folder_name}/{filename}"
+        s3_csv_path  = f"results/{folder_name}/{args.aggregation_method}_alpha={args.alpha}.csv"
+        
         try:
-            s3.upload_file(local_path, args.s3_bucket, s3_path)
-            print(f"[CKPT] S3 backup successful: s3://{args.s3_bucket}/{s3_path}")
+            # Modeli S3'e yükle
+            s3.upload_file(local_path, args.s3_bucket, s3_ckpt_path)
+            
+            # CSV sonucunu S3'e yükle ( results klasöründeki dosyayı bulup gönderir)
+            local_csv_path = f'./results/{args.dataset}/{args.aggregation_method}_alpha={args.alpha}.csv'
+            if os.path.exists(local_csv_path):
+                s3.upload_file(local_csv_path, args.s3_bucket, s3_csv_path)
+                
+            print(f"[S3-SYNC] Round {round_num} verileri S3'e (s3://{args.s3_bucket}/{folder_name}/) yedeklendi.")
         except Exception as e:
-            print(f"[ERROR] S3 Upload failed: {e}")
-
+            print(f"[WARNING] S3 Backup hatası (İzinleri kontrol edin): {e}")
 
 def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
     s3 = boto3.client('s3')
+    folder_name = f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
     local_path = os.path.join(local_ckpt_dir, filename)
-    s3_path = f"checkpoints/{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}/{filename}"
+    s3_path = f"checkpoints/{folder_name}/{filename}"
 
-    # Eger local'de checkpoint yoksa S3'ten indirmeyi dene
     if not os.path.exists(local_path):
         try:
             print(f"Downloading checkpoint from S3: s3://{args.s3_bucket}/{s3_path}")
@@ -790,7 +802,7 @@ def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
         except ClientError:
             print("No checkpoint found on S3. Starting fresh.")
             return 1, {'acc': [], 'acsa': [], 'f1': []}
-
+    
     print(f"[CKPT] Loading checkpoint: {local_path}")
     try:
         ckpt = torch.load(local_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
