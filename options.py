@@ -135,6 +135,7 @@ def args_parser():
     parser.add_argument('--dataset', type=str, default='HAM10000') 
     parser.add_argument('--num_clients', type=int, default=20)
     parser.add_argument('--num_online_clients', type=int, default=8)
+    parser.add_argument('--num_labeled', type=int, default=1000, help='number of labeled data')
 
     # --- SAGE/FixMatch Parametreleri ---
     parser.add_argument('--mu', default=2, type=int)
