@@ -1235,33 +1235,15 @@ def main_loop(alpha):
         list_client2indices_unlabeled = clients_indices(
             list_label2indices_unlabeled, args.num_classes, args.num_clients, alpha, seed=0)
 
-    # Sadece döngü sayısını listenin gerçek uzunluğuna bağla:
-    # num_unlabeled = len(list_client2indices_unlabeled)
-    # num_labeled = len(list_client2indices_labeled)
-    # for client in range(args.num_clients):
-    #     list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
-
-  
-    print(f"[DEBUG] labeled uzunluk: {len(list_client2indices_labeled)}, unlabeled uzunluk: {len(list_client2indices_unlabeled)}, client: {client}")
-    if client < len(list_client2indices_unlabeled):
-        list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
-    else:
-        list_client2indices_unlabeled.append(list(list_client2indices_labeled[client]))
-
-  
-    #     # Her iki listenin de bu client indeksine sahip olduğundan emin olun
-    #     if client < len(list_client2indices_unlabeled) and client < len(list_client2indices_labeled):
-    #         list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
-    #     else:
-    #         print(f"⚠️ Uyarı: Client {client} için veri indeksleri bulunamadı, atlanıyor.")
-
-  
+    # Labeled ve unlabeled listelerini güvenli şekilde birleştir
+    print(f"[DEBUG] labeled uzunluk: {len(list_client2indices_labeled)}, unlabeled uzunluk: {len(list_client2indices_unlabeled)}")
+    
     for client in range(len(list_client2indices_labeled)):
         if client < len(list_client2indices_unlabeled):
             list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
         else:
-            # Bu client için unlabeled liste yoksa, labeled'ı direkt ekle
             list_client2indices_unlabeled.append(list(list_client2indices_labeled[client]))
+          
           
     global_model = Global(args)
     local_model  = Local(args)
