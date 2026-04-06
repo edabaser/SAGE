@@ -1155,6 +1155,47 @@ def main_loop(alpha):
         print(f"[HAM10000] Classes: {cls_names}")
         print(f"[HAM10000] Train dist: { {cls_names[k]: v for k,v in sorted(train_cls.items())} }")
         print(f"[HAM10000] Test  dist: { {cls_names[k]: v for k,v in sorted(test_cls.items())} }")
+      
+    elif args.dataset == 'CIFAR10':
+        args.num_classes = 10
+        # args.num_labeled komut satırından gelecek, burada ezmiyoruz.
+        args.num_rounds = 400
+        
+        cifar_mean = [0.4914, 0.4822, 0.4465]
+        cifar_std  = [0.2023, 0.1994, 0.2010]
+
+        # Test transformu (FixMatch train tarafında kendi transformlarını uygular)
+        transform_test = transforms.Compose([
+            transforms.Resize((32, 32)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=cifar_mean, std=cifar_std),
+        ])
+
+        # Veri setini indir ve yükle
+        full_dataset = datasets.CIFAR10(root=args.path_cifar10, train=True, download=True, transform=None)
+        test_full    = datasets.CIFAR10(root=args.path_cifar10, train=False, download=True, transform=transform_test)
+
+        all_indices = list(range(len(full_dataset)))
+        all_targets = full_dataset.targets # CIFAR10'da targets doğrudan listedir
+
+        # Stratified Split
+        train_indices, _ = train_test_split(
+            all_indices,
+            test_size=0.01, # CIFAR10'da train/test zaten ayrı geldiği için sadece indices listesi oluşturuyoruz
+            stratify=all_targets,
+            random_state=args.seed
+        )
+
+        data_local_training = _SubsetImageFolder(full_dataset, train_indices)
+        data_global_test    = test_full 
+
+        from collections import Counter
+        train_cls = Counter(all_targets[i] for i in train_indices)
+        test_cls  = Counter(test_full.targets)
+        cls_names = full_dataset.classes
+        
+        print(f"[CIFAR10] Train: {len(train_indices)} | Test: {len(test_full)}")
+        print(f"[CIFAR10] Classes: {cls_names}")
 
     else:
         print(f"[ERROR] AWS senaryosu sadece HAM10000 icin kuruldu. {args.dataset} secildi.")
