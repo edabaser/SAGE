@@ -477,6 +477,16 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
         strong = self.strong(image)
         return self.normalize(weak), self.normalize(strong)
 
+    def __getitem__(self, idx):
+        image, label = self.client_dataset[idx]
+        image1, image2 = self.fixmatch(image)
+        return image1, image2, label
+
+    # BU KISMI EKLE:
+    def __len__(self):
+        return len(self.client_dataset)
+
+
 def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unlabeled_client, alpha, seed=0):
     list_choose_unlabeled = []
     list_unlabeled_part1 = []
