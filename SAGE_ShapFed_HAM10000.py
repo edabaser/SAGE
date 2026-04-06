@@ -1241,11 +1241,11 @@ def main_loop(alpha):
     for client in range(args.num_clients):
         list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
 
-        # Hata veren satırı şu bloğun içine al:
-        if client < len(list_client2indices_unlabeled) and client < len(list_client2indices_labeled):
-            list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
-        else:
-          print(f"Uyarı: Client {client} için veri listesi eksik, atlanıyor.")
+        # # Hata veren satırı şu bloğun içine al:
+        # if client < len(list_client2indices_unlabeled) and client < len(list_client2indices_labeled):
+        #     list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
+        # else:
+        #   print(f"Uyarı: Client {client} için veri listesi eksik, atlanıyor.")
 
     global_model = Global(args)
     local_model  = Local(args)
