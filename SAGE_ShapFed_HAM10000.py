@@ -1238,15 +1238,23 @@ def main_loop(alpha):
     # Sadece döngü sayısını listenin gerçek uzunluğuna bağla:
     # num_unlabeled = len(list_client2indices_unlabeled)
     # num_labeled = len(list_client2indices_labeled)
-    for client in range(args.num_clients):
-        list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
+    # for client in range(args.num_clients):
+    #     list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
 
-        # Her iki listenin de bu client indeksine sahip olduğundan emin olun
-        if client < len(list_client2indices_unlabeled) and client < len(list_client2indices_labeled):
+    #     # Her iki listenin de bu client indeksine sahip olduğundan emin olun
+    #     if client < len(list_client2indices_unlabeled) and client < len(list_client2indices_labeled):
+    #         list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
+    #     else:
+    #         print(f"⚠️ Uyarı: Client {client} için veri indeksleri bulunamadı, atlanıyor.")
+
+  
+    for client in range(len(list_client2indices_labeled)):
+        if client < len(list_client2indices_unlabeled):
             list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
         else:
-            print(f"⚠️ Uyarı: Client {client} için veri indeksleri bulunamadı, atlanıyor.")
-
+            # Bu client için unlabeled liste yoksa, labeled'ı direkt ekle
+            list_client2indices_unlabeled.append(list(list_client2indices_labeled[client]))
+          
     global_model = Global(args)
     local_model  = Local(args)
 
