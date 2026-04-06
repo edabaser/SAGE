@@ -1218,9 +1218,17 @@ def main_loop(alpha):
     print("--> Sınıf bazlı indeksleme başlıyor...")
     list_label2indices = classify_label(data_local_training, args.num_classes)
     print(f"--> Sınıflandırma bitti. Labeled/Unlabeled ayrılıyor (Labeled: {args.num_labeled})...")
+    # list_label2indices_labeled, list_label2indices_unlabeled = partition_train(
+    #     list_label2indices, args.num_labeled
+    # ) #cifar10 de 5000 num_labeled yapınca çıkan hatayı düzeltmek için
+
+    
+    ipc = args.num_labeled // args.num_classes
+    print(f"[INFO] Sınıf başına labeled: {ipc} (Toplam: {args.num_labeled}, Sınıf: {args.num_classes})")
+    
     list_label2indices_labeled, list_label2indices_unlabeled = partition_train(
-        list_label2indices, args.num_labeled
-    )
+        list_label2indices, ipc)
+  
     print(f"--> Dirichlet Dağılımı hesaplanıyor (Alpha: {alpha})...")
 
     if alpha == 0:
