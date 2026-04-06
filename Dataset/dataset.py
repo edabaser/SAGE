@@ -364,28 +364,48 @@ class Indices2Dataset_labeled(Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
         self.indices = None
-        self.ham_mean = (0.763, 0.545, 0.570)
-        self.ham_std = (0.140, 0.152, 0.169)
+        # Dinamik değerler için placeholder'lar
+        self.mean = (0.763, 0.545, 0.570)
+        self.std = (0.140, 0.152, 0.169)
+        self.img_size = 224
 
     def load(self, indices: list):
         self.indices = indices
         self.client_dataset = [self.dataset[i] for i in indices]
         self.client_dataset *= 2000 
+        
+        # İlk resmi kontrol ederek boyutu ve normalizasyonu belirleyelim
+        sample_img, _ = self.client_dataset[0]
+        # Eğer resim 32x32 ise CIFAR-10 muamelesi yap
+        if hasattr(sample_img, 'size'): # PIL Image
+            w, h = sample_img.size
+        elif torch.is_tensor(sample_img): # Tensor
+            w, h = sample_img.shape[-1], sample_img.shape[-2]
+        else: # Diğer (numpy vb)
+            w, h = 224, 224
+
+        self.img_size = w
+        if self.img_size <= 32: # CIFAR-10 için
+            self.mean = (0.4914, 0.4822, 0.4465)
+            self.std = (0.2023, 0.1994, 0.2010)
+        else: # HAM10000 için
+            self.mean = (0.763, 0.545, 0.570)
+            self.std = (0.140, 0.152, 0.169)
 
     def __getitem__(self, idx):
+        # BURASI KRİTİK: size=self.img_size yaptık
         self.label_trans = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomCrop(size=224,
-                                  padding=int(224 * 0.125),
+            transforms.RandomCrop(size=self.img_size,
+                                  padding=int(self.img_size * 0.125),
                                   padding_mode='reflect'),
             transforms.ToTensor(),
-            transforms.Normalize(mean=self.ham_mean, std=self.ham_std),
+            transforms.Normalize(mean=self.mean, std=self.std),
         ])
 
         image, label = self.client_dataset[idx]
         
-        # Convert tensor to PIL if necessary to avoid TypeError in transforms
         if torch.is_tensor(image):
             image = transforms.ToPILImage()(image)
         elif isinstance(image, np.ndarray):
@@ -401,53 +421,61 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
         self.indices = None
-        self.ham_mean = (0.763, 0.545, 0.570)
-        self.ham_std = (0.140, 0.152, 0.169)
+        self.mean = (0.763, 0.545, 0.570)
+        self.std = (0.140, 0.152, 0.169)
+        self.img_size = 224
 
     def load(self, indices: list):
         self.indices = indices
         self.client_dataset = [self.dataset[i] for i in self.indices]
         self.client_dataset_len = len(self.client_dataset)
         self.client_dataset *= 50 
+        
+        # Boyut ve Normalizasyon Belirleme
+        sample_img, _ = self.client_dataset[0]
+        if hasattr(sample_img, 'size'):
+            w, h = sample_img.size
+        else:
+            w, h = 224, 224
+            
+        self.img_size = w
+        if self.img_size <= 32:
+            self.mean = (0.4914, 0.4822, 0.4465)
+            self.std = (0.2023, 0.1994, 0.2010)
+        else:
+            self.mean = (0.763, 0.545, 0.570)
+            self.std = (0.140, 0.152, 0.169)
 
     def fixmatch(self, image):
+        # BURASI KRİTİK: size=self.img_size yaptık
         self.weak = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomCrop(size=224,
-                                  padding=int(224 * 0.125),
+            transforms.RandomCrop(size=self.img_size,
+                                  padding=int(self.img_size * 0.125),
                                   padding_mode='reflect'),
         ])
 
         self.strong = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomCrop(size=224,
-                                  padding=int(224 * 0.125),
+            transforms.RandomCrop(size=self.img_size,
+                                  padding=int(self.img_size * 0.125),
                                   padding_mode='reflect'),
             RandAugmentMC(n=2, m=10),
         ])
 
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean=self.ham_mean, std=self.ham_std)
+            transforms.Normalize(mean=self.mean, std=self.std)
         ])
 
-        # Convert tensor to PIL if necessary
         if torch.is_tensor(image):
             image = transforms.ToPILImage()(image)
         
         weak = self.weak(image)
         strong = self.strong(image)
         return self.normalize(weak), self.normalize(strong)
-
-    def __getitem__(self, idx):
-        image, label = self.client_dataset[idx]
-        image1, image2 = self.fixmatch(image)
-        return image1, image2, label
-
-    def __len__(self):
-        return self.client_dataset_len
 
 def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unlabeled_client, alpha, seed=0):
     list_choose_unlabeled = []
