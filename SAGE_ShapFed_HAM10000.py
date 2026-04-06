@@ -1241,6 +1241,14 @@ def main_loop(alpha):
     # for client in range(args.num_clients):
     #     list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
 
+  
+    print(f"[DEBUG] labeled uzunluk: {len(list_client2indices_labeled)}, unlabeled uzunluk: {len(list_client2indices_unlabeled)}, client: {client}")
+    if client < len(list_client2indices_unlabeled):
+        list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
+    else:
+        list_client2indices_unlabeled.append(list(list_client2indices_labeled[client]))
+
+  
     #     # Her iki listenin de bu client indeksine sahip olduğundan emin olun
     #     if client < len(list_client2indices_unlabeled) and client < len(list_client2indices_labeled):
     #         list_client2indices_unlabeled[client].extend(list_client2indices_labeled[client])
