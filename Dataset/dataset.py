@@ -505,12 +505,14 @@ def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unla
             list_unlabeled_part2.append(list_index)
 
     list_client_part1 = clients_indices_unlabel(list_label2indices=list_unlabeled_part1,
-                                                num_classes=args.num_classes, num_clients=9,
-                                                non_iid_alpha=alpha, seed=1000)
+                                                num_classes=args.num_classes, num_clients=10,
+                                                non_iid_alpha=alpha, seed=1000)  # num_clients=9-->10
     list_client_part2 = clients_indices_unlabel(list_label2indices=list_unlabeled_part2, 
                                                 num_classes=args.num_classes, num_clients=10,
-                                                non_iid_alpha=alpha, seed=1000)
-    list_choose_unlabeled.append([])
-    list_choose_unlabeled.extend(list_client_part1)
-    list_choose_unlabeled.extend(list_client_part2)
+                                                non_iid_alpha=alpha, seed=1000) #total 20 client
+    # list_choose_unlabeled.append([])
+    # list_choose_unlabeled.extend(list_client_part1)
+    # list_choose_unlabeled.extend(list_client_part2)
+    # Boş liste yerine doğrudan birleştirme yapalım
+    list_choose_unlabeled = list_client_part1 + list_client_part2
     return list_choose_unlabeled
