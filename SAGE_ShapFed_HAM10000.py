@@ -915,6 +915,11 @@ class Global(object):
             fused_params[name_param] = sum(
                 d[name_param] * w for d, w in zip(list_dicts_local_params, weights)
             )
+          # Orijinal parametrenin veri tipi int64 ise, toplamı tekrar int64'e çevir
+            if list_dicts_local_params[0][name_param].dtype == torch.int64:
+                fused_params[name_param] = fused_tensor.to(torch.int64)
+            else:
+                fused_params[name_param] = fused_tensor
         return fused_params
 
     def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
@@ -1222,12 +1227,11 @@ def main_loop(alpha):
     #     list_label2indices, args.num_labeled
     # ) #cifar10 de 5000 num_labeled yapınca çıkan hatayı düzeltmek için
 
-    
-    ipc = args.num_labeled // args.num_classes
-    print(f"[INFO] Sınıf başına labeled: {ipc} (Toplam: {args.num_labeled}, Sınıf: {args.num_classes})")
+    print(f"[INFO] Labeled veri ayrılıyor (Toplam: {args.num_labeled}, Sınıf: {args.num_classes})")
     
     list_label2indices_labeled, list_label2indices_unlabeled = partition_train(
-        list_label2indices, ipc)
+        list_label2indices, args.num_labeled)   
+   
   
     print(f"--> Dirichlet Dağılımı hesaplanıyor (Alpha: {alpha})...")
 
