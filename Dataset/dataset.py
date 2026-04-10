@@ -290,7 +290,6 @@
 #     list_choose_unlabeled.extend(list_client_part2)
 
 #     return list_choose_unlabeled
-
 import numpy as np
 from torch.utils.data.dataset import Dataset
 import copy
@@ -304,10 +303,6 @@ from Dataset.sample_dirichlet import clients_indices, clients_indices_unlabel
 import time
 
 def classify_label(dataset, num_classes: int):
-    # list1 = [[] for _ in range(num_classes)]
-    # for idx, datum in enumerate(dataset):
-    #     list1[datum[1]].append(idx)
-    # return list1
     """
     HIZLI VERSIYON: Resimleri acmaz, sadece ImageFolder'ın 
     onceden hazırladıgı targets listesini kullanır.
@@ -317,7 +312,6 @@ def classify_label(dataset, num_classes: int):
     # Eger dataset bir Subset ise targets'a ulasmak icin .dataset kullanmalıyız
     targets = getattr(dataset, 'targets', None)
     if targets is None and hasattr(dataset, 'base_dataset'):
-        # Senin _SubsetImageFolder sınıfın için:
         targets = dataset.targets 
     
     for idx, label in enumerate(targets):
@@ -364,7 +358,6 @@ class Indices2Dataset_labeled(Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
         self.indices = None
-        # Dinamik değerler için placeholder'lar
         self.mean = (0.763, 0.545, 0.570)
         self.std = (0.140, 0.152, 0.169)
         self.img_size = 224
@@ -374,35 +367,39 @@ class Indices2Dataset_labeled(Dataset):
         self.client_dataset = [self.dataset[i] for i in indices]
         self.client_dataset *= 2000 
         
-        # İlk resmi kontrol ederek boyutu ve normalizasyonu belirleyelim
         sample_img, _ = self.client_dataset[0]
-        # Eğer resim 32x32 ise CIFAR-10 muamelesi yap
-        if hasattr(sample_img, 'size'): # PIL Image
+        if hasattr(sample_img, 'size'): 
             w, h = sample_img.size
-        elif torch.is_tensor(sample_img): # Tensor
+        elif torch.is_tensor(sample_img): 
             w, h = sample_img.shape[-1], sample_img.shape[-2]
-        else: # Diğer (numpy vb)
+        else: 
             w, h = 224, 224
 
         self.img_size = w
-        if self.img_size <= 32: # CIFAR-10 için
+        if self.img_size <= 32: # CIFAR-10
             self.mean = (0.4914, 0.4822, 0.4465)
             self.std = (0.2023, 0.1994, 0.2010)
-        else: # HAM10000 için
+        else: # HAM10000
             self.mean = (0.763, 0.545, 0.570)
             self.std = (0.140, 0.152, 0.169)
 
     def __getitem__(self, idx):
-        # BURASI KRİTİK: size=self.img_size yaptık
-        self.label_trans = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
+        # DINAMIK TRANSFORM LISTESI
+        transform_list = [transforms.RandomHorizontalFlip()]
+        
+        # Sadece medikal veri (boyut > 32) ise tepe taklak etmeye (Vertical Flip) izin ver
+        if self.img_size > 32:
+            transform_list.append(transforms.RandomVerticalFlip())
+            
+        transform_list.extend([
             transforms.RandomCrop(size=self.img_size,
                                   padding=int(self.img_size * 0.125),
                                   padding_mode='reflect'),
             transforms.ToTensor(),
             transforms.Normalize(mean=self.mean, std=self.std),
         ])
+
+        self.label_trans = transforms.Compose(transform_list)
 
         image, label = self.client_dataset[idx]
         
@@ -431,7 +428,6 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
         self.client_dataset_len = len(self.client_dataset)
         self.client_dataset *= 50 
         
-        # Boyut ve Normalizasyon Belirleme
         sample_img, _ = self.client_dataset[0]
         if hasattr(sample_img, 'size'):
             w, h = sample_img.size
@@ -447,23 +443,25 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
             self.std = (0.140, 0.152, 0.169)
 
     def fixmatch(self, image):
-        # BURASI KRİTİK: size=self.img_size yaptık
-        self.weak = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
+        # DINAMIK TRANSFORM LISTESI (WEAK & STRONG ICIN)
+        base_transforms = [transforms.RandomHorizontalFlip()]
+        
+        # Sadece HAM10000 ise dikey cevirmeyi ekle
+        if self.img_size > 32:
+            base_transforms.append(transforms.RandomVerticalFlip())
+            
+        base_transforms.append(
             transforms.RandomCrop(size=self.img_size,
                                   padding=int(self.img_size * 0.125),
-                                  padding_mode='reflect'),
-        ])
+                                  padding_mode='reflect')
+        )
 
-        self.strong = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
-            transforms.RandomCrop(size=self.img_size,
-                                  padding=int(self.img_size * 0.125),
-                                  padding_mode='reflect'),
-            RandAugmentMC(n=2, m=10),
-        ])
+        self.weak = transforms.Compose(base_transforms)
+
+        # Strong transform, zayif transformun ustune RandAugment ekler
+        strong_transforms = base_transforms.copy()
+        strong_transforms.append(RandAugmentMC(n=2, m=10))
+        self.strong = transforms.Compose(strong_transforms)
 
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
@@ -482,10 +480,8 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
         image1, image2 = self.fixmatch(image)
         return image1, image2, label
 
-    # BU KISMI EKLE:
     def __len__(self):
         return len(self.client_dataset)
-
 
 def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unlabeled_client, alpha, seed=0):
     list_choose_unlabeled = []
@@ -506,13 +502,10 @@ def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unla
 
     list_client_part1 = clients_indices_unlabel(list_label2indices=list_unlabeled_part1,
                                                 num_classes=args.num_classes, num_clients=10,
-                                                non_iid_alpha=alpha, seed=1000)  # num_clients=9-->10
+                                                non_iid_alpha=alpha, seed=1000)  
     list_client_part2 = clients_indices_unlabel(list_label2indices=list_unlabeled_part2, 
                                                 num_classes=args.num_classes, num_clients=10,
-                                                non_iid_alpha=alpha, seed=1000) #total 20 client
-    # list_choose_unlabeled.append([])
-    # list_choose_unlabeled.extend(list_client_part1)
-    # list_choose_unlabeled.extend(list_client_part2)
-    # Boş liste yerine doğrudan birleştirme yapalım
+                                                non_iid_alpha=alpha, seed=1000) 
+
     list_choose_unlabeled = list_client_part1 + list_client_part2
     return list_choose_unlabeled
