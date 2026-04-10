@@ -822,65 +822,96 @@ def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
 
 def compute_cssv(args, local_models_params, initial_global_params):
     num_clients = len(local_models_params)
+    num_classes = args.num_classes
+  
     if num_clients == 0:
         return np.array([])
 
     weight_layer = 'classifier.weight'
     bias_layer   = 'classifier.bias'
-
+  
+# 1. Delta W (Ağırlık Güncellemeleri) hesapla
     client_updates = []
     for local_params in local_models_params:
         update = {}
-        for name in local_params:
-            if name in initial_global_params:
-                update[name] = local_params[name] - initial_global_params[name].to(local_params[name].device)
+      # Sadece classifier katmanlarındaki değişime bakıyoruz
+        update[weight_layer] = local_params[weight_layer] - initial_global_params[weight_layer].to(local_params[weight_layer].device)
+        update[bias_layer] = local_params[bias_layer] - initial_global_params[bias_layer].to(local_params[bias_layer].device)
         client_updates.append(update)
-
-    shapley_values = np.zeros(num_clients)
+      
+      # 2. Sınıf bazlı Shapley Matrisi: Boyut (num_clients, num_classes)
+    shapley_values = np.zeros((num_clients, num_classes))
     num_samples = getattr(args, 'shapley_samples', 10)
 
     for _ in range(num_samples):
         permutation = np.random.permutation(num_clients)
+        
         for i, client_idx in enumerate(permutation):
             coalition_indices      = permutation[:i]
             coalition_plus_indices = permutation[:i+1]
 
-            curr_w = torch.cat([
-                client_updates[client_idx][weight_layer].view(-1),
-                client_updates[client_idx][bias_layer].view(-1)
-            ])
-            curr_w_norm = F.normalize(curr_w.unsqueeze(0), p=2)
+            # 3. Her bir sınıf için (c) ayrı ayrı hesaplama yap
+            for c in range(num_classes):
+                # Mevcut istemcinin sadece c. sınıfına ait (satır) ağırlık ve bias vektörü
+                curr_w_c = torch.cat([
+                    client_updates[client_idx][weight_layer][c].view(-1),
+                    client_updates[client_idx][bias_layer][c].view(-1)
+                ])
+                
+                # Sıfıra bölme (Zero-division) hatasını engellemek için norm kontrolü
+                if torch.norm(curr_w_c) == 0:
+                    curr_w_norm = curr_w_c.unsqueeze(0)
+                else:
+                    curr_w_norm = F.normalize(curr_w_c.unsqueeze(0), p=2)
 
-            sim_s = 0.0
-            if len(coalition_indices) > 0:
-                tw = torch.zeros_like(client_updates[0][weight_layer])
-                tb = torch.zeros_like(client_updates[0][bias_layer])
-                for c in coalition_indices:
-                    tw += client_updates[c][weight_layer]
-                    tb += client_updates[c][bias_layer]
-                tw /= len(coalition_indices)
-                tb /= len(coalition_indices)
-                agg = torch.cat([tw.view(-1), tb.view(-1)])
-                sim_s = F.cosine_similarity(curr_w_norm, F.normalize(agg.unsqueeze(0), p=2)).item()
+                # Koalisyonun (client hariç) c. sınıf vektörü
+                sim_s = 0.0
+                if len(coalition_indices) > 0:
+                    tw_c = torch.zeros_like(client_updates[0][weight_layer][c])
+                    tb_c = torch.zeros_like(client_updates[0][bias_layer][c])
+                    for co_idx in coalition_indices:
+                        tw_c += client_updates[co_idx][weight_layer][c]
+                        tb_c += client_updates[co_idx][bias_layer][c]
+                    tw_c /= len(coalition_indices)
+                    tb_c /= len(coalition_indices)
+                    
+                    agg_c = torch.cat([tw_c.view(-1), tb_c.view(-1)])
+                    if torch.norm(agg_c) > 0 and torch.norm(curr_w_c) > 0:
+                        sim_s = F.cosine_similarity(curr_w_norm, F.normalize(agg_c.unsqueeze(0), p=2)).item()
 
-            tw2 = torch.zeros_like(client_updates[0][weight_layer])
-            tb2 = torch.zeros_like(client_updates[0][bias_layer])
-            for c in coalition_plus_indices:
-                tw2 += client_updates[c][weight_layer]
-                tb2 += client_updates[c][bias_layer]
-            tw2 /= len(coalition_plus_indices)
-            tb2 /= len(coalition_plus_indices)
-            agg2 = torch.cat([tw2.view(-1), tb2.view(-1)])
-            sim_si = F.cosine_similarity(curr_w_norm, F.normalize(agg2.unsqueeze(0), p=2)).item()
+                # Koalisyon + Mevcut İstemcinin c. sınıf vektörü
+                tw2_c = torch.zeros_like(client_updates[0][weight_layer][c])
+                tb2_c = torch.zeros_like(client_updates[0][bias_layer][c])
+                for co_idx in coalition_plus_indices:
+                    tw2_c += client_updates[co_idx][weight_layer][c]
+                    tb2_c += client_updates[co_idx][bias_layer][c]
+                tw2_c /= len(coalition_plus_indices)
+                tb2_c /= len(coalition_plus_indices)
+                
+                agg2_c = torch.cat([tw2_c.view(-1), tb2_c.view(-1)])
+                sim_si = 0.0
+                if torch.norm(agg2_c) > 0 and torch.norm(curr_w_c) > 0:
+                    sim_si = F.cosine_similarity(curr_w_norm, F.normalize(agg2_c.unsqueeze(0), p=2)).item()
 
-            shapley_values[client_idx] += (sim_si - sim_s)
+                # İstemcinin sadece bu sınıftaki marjinal katkısını ekle
+                shapley_values[client_idx, c] += (sim_si - sim_s)
 
     if num_samples > 0:
         shapley_values /= num_samples
 
+    # Negatif Shapley değerlerini 0 yap (Modeli zehirlemesini engellemek için)
     shapley_values = np.maximum(shapley_values, 0)
-    total = np.sum(shapley_values)
-    return shapley_values / total if total > 0 else np.ones(num_clients) / num_clients
+    
+    # 4. Normalizasyon: Her bir SINIF (sütun) için istemcilerin toplam ağırlığı 1 olmalı
+    for c in range(num_classes):
+        col_sum = np.sum(shapley_values[:, c])
+        if col_sum > 0:
+            shapley_values[:, c] /= col_sum
+        else:
+            # Eğer o sınıf için tüm istemcilerin katkısı 0 ise, herkese eşit ağırlık ver
+            shapley_values[:, c] = 1.0 / num_clients
+
+    return shapley_values # Dönüş boyutu: [İstemci Sayısı, Sınıf Sayısı]
 
 
 # ══════════════════════════════════════════════════════════════
