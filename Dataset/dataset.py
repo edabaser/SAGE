@@ -150,48 +150,101 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
             self.mean = (0.763, 0.545, 0.570)
             self.std = (0.140, 0.152, 0.169)
 
-    def fixmatch(self, image):
-        # DINAMIK TRANSFORM LISTESI (WEAK & STRONG ICIN)
-        base_transforms = [transforms.RandomHorizontalFlip()]
+    # def fixmatch(self, image):
+    #     # DINAMIK TRANSFORM LISTESI (WEAK & STRONG ICIN)
+    #     base_transforms = [transforms.RandomHorizontalFlip()]
         
-        # Sadece HAM10000 ise dikey cevirmeyi ekle
-        if self.img_size > 32:
-            base_transforms.append(transforms.RandomVerticalFlip())
+    #     # Sadece HAM10000 ise dikey cevirmeyi ekle
+    #     if self.img_size > 32:
+    #         base_transforms.append(transforms.RandomVerticalFlip())
             
-        base_transforms.append(
-            transforms.RandomCrop(size=self.img_size,
-                                  padding=int(self.img_size * 0.125),
-                                  padding_mode='reflect')
-        )
+    #     base_transforms.append(
+    #         transforms.RandomCrop(size=self.img_size,
+    #                               padding=int(self.img_size * 0.125),
+    #                               padding_mode='reflect')
+    #     )
 
-        self.weak = transforms.Compose(base_transforms)
+    #     self.weak = transforms.Compose(base_transforms)
 
-        # Strong transform, zayif transformun ustune RandAugment ekler
-        strong_transforms = base_transforms.copy()
-        strong_transforms.append(RandAugmentMC(n=2, m=10))
-        self.strong = transforms.Compose(strong_transforms)
+    #     # Strong transform, zayif transformun ustune RandAugment ekler
+    #     strong_transforms = base_transforms.copy()
+    #     strong_transforms.append(RandAugmentMC(n=2, m=10))
+    #     self.strong = transforms.Compose(strong_transforms)
 
+    #     self.normalize = transforms.Compose([
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=self.mean, std=self.std)
+    #     ])
+
+    #     if torch.is_tensor(image):
+    #         image = transforms.ToPILImage()(image)
+        
+    #     weak = self.weak(image)
+    #     strong = self.strong(image)
+    #     return self.normalize(weak), self.normalize(strong)
+
+    # def __getitem__(self, idx):
+    #     image, label = self.client_dataset[idx]
+    #     image1, image2 = self.fixmatch(image)
+    #     return image1, image2, label
+
+    # def __len__(self):
+    #     # return len(self.client_dataset)
+    #     return self.client_dataset_len
+
+
+    def fixmatch(self, image):
+        if torch.is_tensor(image):
+            image = transforms.ToPILImage()(image)
+    
+        if self.img_size <= 32:  # CIFAR-10
+            self.weak = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(size=self.img_size,
+                                      padding=int(self.img_size * 0.125),
+                                      padding_mode='reflect'),
+            ])
+            self.strong = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(size=self.img_size,
+                                      padding=int(self.img_size * 0.125),
+                                      padding_mode='reflect'),
+                RandAugmentMC(n=2, m=10),
+            ])
+        else:  # HAM10000
+            self.weak = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomCrop(size=self.img_size,
+                                      padding=int(self.img_size * 0.125),
+                                      padding_mode='reflect'),
+            ])
+            self.strong = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomCrop(size=self.img_size,
+                                      padding=int(self.img_size * 0.125),
+                                      padding_mode='reflect'),
+                RandAugmentMC(n=2, m=10),
+            ])
+    
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=self.mean, std=self.std)
         ])
-
-        if torch.is_tensor(image):
-            image = transforms.ToPILImage()(image)
-        
+    
         weak = self.weak(image)
         strong = self.strong(image)
         return self.normalize(weak), self.normalize(strong)
-
+    
     def __getitem__(self, idx):
         image, label = self.client_dataset[idx]
         image1, image2 = self.fixmatch(image)
         return image1, image2, label
-
+    
     def __len__(self):
-        # return len(self.client_dataset)
-        return self.client_dataset_len
-
+        return self.client_dataset_len 
+    
 def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unlabeled_client, alpha, seed=0):
     list_choose_unlabeled = []
     list_unlabeled_part1 = []
