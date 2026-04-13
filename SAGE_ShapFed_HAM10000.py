@@ -707,9 +707,10 @@ def main_loop(alpha):
     indices2data_labeled   = Indices2Dataset_labeled(data_local_training)
     indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
 
-  import time
-  import torch
-  from torch.utils.data import DataLoader, RandomSampler
+import time
+import torch
+from torch.utils.data import DataLoader, RandomSampler
+  
   
   # Bunu main_loop içinde, ilk round'dan önce geçici olarak ekle:
   def benchmark_dataloader(indices2data_labeled, indices2data_unlabeled, args):
