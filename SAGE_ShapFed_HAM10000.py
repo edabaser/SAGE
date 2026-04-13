@@ -357,28 +357,28 @@ class Global(object):
         return self.model.state_dict()
       
 
-    def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
-        self.model.load_state_dict(fedavg_params)
-        self.model.eval()
-        all_labels, all_predicts = [], []
-        num_corrects = 0
-        with torch.no_grad():
-            for images, labels in DataLoader(data_test, batch_size_test):
-                images, labels = images.cuda(args.gpu_id), labels.cuda(args.gpu_id)
-                _, outputs = self.model(images)
-                _, predicts = torch.max(outputs, -1)
-                num_corrects += torch.sum(torch.eq(predicts.cpu(), labels.cpu())).item()
-                all_labels.extend(labels.cpu().numpy())
-                all_predicts.extend(predicts.cpu().numpy())
-        accuracy = num_corrects / len(data_test)
-        acsa     = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
-        macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
-        # --- BURAYA EKLE: Test bittikten sonra GPU temizliği ---
-        torch.cuda.empty_cache()
-        return accuracy, acsa, macro_f1
+    # def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
+    #     self.model.load_state_dict(fedavg_params)
+    #     self.model.eval()
+    #     all_labels, all_predicts = [], []
+    #     num_corrects = 0
+    #     with torch.no_grad():
+    #         for images, labels in DataLoader(data_test, batch_size_test):
+    #             images, labels = images.cuda(args.gpu_id), labels.cuda(args.gpu_id)
+    #             _, outputs = self.model(images)
+    #             _, predicts = torch.max(outputs, -1)
+    #             num_corrects += torch.sum(torch.eq(predicts.cpu(), labels.cpu())).item()
+    #             all_labels.extend(labels.cpu().numpy())
+    #             all_predicts.extend(predicts.cpu().numpy())
+    #     accuracy = num_corrects / len(data_test)
+    #     acsa     = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
+    #     macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
+    #     # --- BURAYA EKLE: Test bittikten sonra GPU temizliği ---
+    #     torch.cuda.empty_cache()
+    #     return accuracy, acsa, macro_f1
 
-    def download_params(self):
-        return self.model.state_dict()
+    # def download_params(self):
+    #     return self.model.state_dict()
 
 
 # ══════════════════════════════════════════════════════════════
