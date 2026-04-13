@@ -711,7 +711,7 @@ def main_loop(alpha):
 """
 """
     # ── BENCHMARK ──
-    import time
+import time
 
     indices2data_labeled.load(list_client2indices_labeled[0])
     indices2data_unlabeled.load(list_client2indices_unlabeled[0])
