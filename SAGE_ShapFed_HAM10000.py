@@ -717,8 +717,11 @@ def main_loop(alpha):
         for client in online_clients:
             indices2data_labeled.load(list_client2indices_labeled[client])
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
+            # list_nums_local_data.append(
+            #     len(indices2data_labeled) + len(indices2data_unlabeled)
+            # )
             list_nums_local_data.append(
-                len(indices2data_labeled) + len(indices2data_unlabeled)
+            len(list_client2indices_labeled[client]) + len(list_client2indices_unlabeled[client])
             )
             local_params = local_model.fixmatch_train(
                 args, indices2data_labeled, indices2data_unlabeled,
