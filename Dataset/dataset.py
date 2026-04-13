@@ -145,7 +145,7 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
         self.img_size = w
         if self.img_size <= 32:
             self.mean = (0.4914, 0.4822, 0.4465)
-            self.std = (0.2023, 0.1994, 0.2010)
+            self.std = (0.2471, 0.2435, 0.2616) #(0.2023, 0.1994, 0.2010)
         else:
             self.mean = (0.763, 0.545, 0.570)
             self.std = (0.140, 0.152, 0.169)
