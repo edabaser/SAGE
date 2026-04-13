@@ -707,45 +707,44 @@ def main_loop(alpha):
     indices2data_labeled   = Indices2Dataset_labeled(data_local_training)
     indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
 
-import time
-import torch
-from torch.utils.data import DataLoader, RandomSampler
-  
-  
-  # Bunu main_loop içinde, ilk round'dan önce geçici olarak ekle:
-  def benchmark_dataloader(indices2data_labeled, indices2data_unlabeled, args):
-      indices2data_labeled.load(list_client2indices_labeled[0])
-      indices2data_unlabeled.load(list_client2indices_unlabeled[0])
-      
-      labeled_loader = DataLoader(
-          indices2data_labeled, 
-          sampler=RandomSampler(indices2data_labeled),
-          batch_size=128, drop_last=True, num_workers=2, pin_memory=True
-      )
-      unlabeled_loader = DataLoader(
-          indices2data_unlabeled,
-          sampler=RandomSampler(indices2data_unlabeled),
-          batch_size=256, drop_last=True, num_workers=2, pin_memory=True
-      )
-      
-      # Labeled hız testi
-      t = time.time()
-      for i, batch in enumerate(labeled_loader):
-          if i == 10: break
-      print(f"Labeled  10 batch: {time.time()-t:.2f}s")
-      
-      # Unlabeled hız testi  
-      t = time.time()
-      for i, batch in enumerate(unlabeled_loader):
-          if i == 10: break
-      print(f"Unlabeled 10 batch: {time.time()-t:.2f}s")
-      
-      # Dataset boyutları
-      print(f"Labeled dataset len  : {len(indices2data_labeled)}")
-      print(f"Unlabeled dataset len: {len(indices2data_unlabeled)}")
-      print(f"Unlabeled client_dataset_len: {indices2data_unlabeled.client_dataset_len}")
-      print(f"local_iter olacak değer: {indices2data_unlabeled.client_dataset_len // 128}")
 
+"""
+"""
+    # ── BENCHMARK ──
+    import time
+
+    indices2data_labeled.load(list_client2indices_labeled[0])
+    indices2data_unlabeled.load(list_client2indices_unlabeled[0])
+
+    labeled_loader_bm = DataLoader(
+        indices2data_labeled,
+        sampler=RandomSampler(indices2data_labeled),
+        batch_size=128, drop_last=True, num_workers=2, pin_memory=True
+    )
+    unlabeled_loader_bm = DataLoader(
+        indices2data_unlabeled,
+        sampler=RandomSampler(indices2data_unlabeled),
+        batch_size=256, drop_last=True, num_workers=2, pin_memory=True
+    )
+
+    t = time.time()
+    for i, batch in enumerate(labeled_loader_bm):
+        if i == 10: break
+    print(f"Labeled  10 batch: {time.time()-t:.2f}s")
+
+    t = time.time()
+    for i, batch in enumerate(unlabeled_loader_bm):
+        if i == 10: break
+    print(f"Unlabeled 10 batch: {time.time()-t:.2f}s")
+
+    print(f"Labeled   len: {len(indices2data_labeled)}")
+    print(f"Unlabeled len: {len(indices2data_unlabeled)}")
+    print(f"Unlabeled client_dataset_len: {indices2data_unlabeled.client_dataset_len}")
+    print(f"local_iter: {indices2data_unlabeled.client_dataset_len // 128}")
+    # ── BENCHMARK SONU ──
+
+"""
+"""
   
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         dict_global_params = global_model.download_params()
