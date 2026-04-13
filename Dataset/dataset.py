@@ -189,7 +189,8 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
         return image1, image2, label
 
     def __len__(self):
-        return len(self.client_dataset)
+        # return len(self.client_dataset)
+        return self.client_dataset_len
 
 def sampling_unlabeled_data_non_iid(args, list_label2indices_unlabeled, num_unlabeled_client, alpha, seed=0):
     list_choose_unlabeled = []
