@@ -627,8 +627,10 @@ def main_loop(alpha):
             random_state=args.seed
         )
 
-        data_local_training = _SubsetImageFolder(full_dataset, train_indices)
-        data_global_test    = test_full 
+        # data_local_training = _SubsetImageFolder(full_dataset, train_indices)
+        # data_global_test    = test_full 
+        data_local_training = datasets.CIFAR10(root=args.path_cifar10, train=True, download=True, transform=None)
+        data_global_test    = datasets.CIFAR10(root=args.path_cifar10, train=False, download=True, transform=transform_test)
 
         from collections import Counter
         train_cls = Counter(all_targets[i] for i in train_indices)
