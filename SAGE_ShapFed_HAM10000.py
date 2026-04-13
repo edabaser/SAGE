@@ -199,12 +199,79 @@ def patch_resnet_for_ham(model):
     model.avgpool = torch.nn.AdaptiveAvgPool2d(1)
     return model
 
+# class Global(object):
+#     def __init__(self, args):
+#         self.model = ResNet(resnet_size=8, scaling=4,
+#                             save_activations=False, group_norm_num_groups=None,
+#                             freeze_bn=False, freeze_bn_affine=False,
+#                             num_classes=args.num_classes)
+#         if args.dataset == 'HAM10000':
+#             patch_resnet_for_ham(self.model)
+#         self.model.cuda(args.gpu_id)
+#         self.num_classes = args.num_classes
+
+#     def initialize_for_model_fusion(self, args, list_dicts_local_params, list_nums_local_data, initial_global_params):
+#         fused_params = copy.deepcopy(list_dicts_local_params[0])
+#         num_clients = len(list_dicts_local_params)
+        
+#         if args.aggregation_method == 'ShapFed':
+#             # cssv_weights boyutu artık bir matris: (num_clients, args.num_classes)
+#             cssv_weights = compute_cssv(args, list_dicts_local_params, initial_global_params)
+            
+#             # Modelin gövdesi (CNN/ResNet katmanları) için her istemcinin genel sınıf başarı ortalamasını alıyoruz
+#             client_avg_weights = np.mean(cssv_weights, axis=1)
+            
+#             # Ortalamayı güvenlik amacıyla toplamı 1 olacak şekilde normalize edelim
+#             if np.sum(client_avg_weights) > 0:
+#                 client_avg_weights /= np.sum(client_avg_weights)
+#             else:
+#                 client_avg_weights = np.ones(num_clients) / num_clients
+#         else:
+#             # FedAvg (Standart Veri Oranına Göre)
+#             total_data = sum(list_nums_local_data)
+#             client_avg_weights = [n / total_data for n in list_nums_local_data]
+#             # FedAvg'de tüm sınıflar için aynı ağırlığı kopyalıyoruz (kod uyumluluğu için)
+#             cssv_weights = np.array([[w] * args.num_classes for w in client_avg_weights])
+
+#         # Parametreleri Birleştirme (Aggregation)
+#         for name_param in list_dicts_local_params[0]:
+            
+#             # 1. Sınıflandırıcı Ağırlıkları (Her bir sınıf satırı, kendine ait CSSV ile çarpılır)
+#             if name_param == 'classifier.weight':
+#                 fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
+#                 for c in range(args.num_classes): # Her bir sınıf için
+#                     for i in range(num_clients):  # Her bir istemci için
+#                         w_c = cssv_weights[i, c]
+#                         fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
+                        
+#             # 2. Sınıflandırıcı Bias Değerleri (Aynı şekilde sınıf bazlı çarpılır)
+#             elif name_param == 'classifier.bias':
+#                 fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
+#                 for c in range(args.num_classes):
+#                     for i in range(num_clients):
+#                         w_c = cssv_weights[i, c]
+#                         fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
+                        
+#             # 3. Model Gövdesi (Ortalama genel ağırlıklarla çarpılır)
+#             else:
+#                 fused_tensor = sum(
+#                     list_dicts_local_params[i][name_param] * client_avg_weights[i] 
+#                     for i in range(num_clients)
+#                 )
+            
+#             # Aşama 1 Düzeltmesi: Orijinal tensor int64 ise (BatchNorm gibi), tipi geri dönüştür
+#             if list_dicts_local_params[0][name_param].dtype == torch.int64:
+#                 fused_params[name_param] = fused_tensor.to(torch.int64)
+#             else:
+#                 fused_params[name_param] = fused_tensor
+                
+#         return fused_params
+
 class Global(object):
     def __init__(self, args):
         self.model = ResNet(resnet_size=8, scaling=4,
                             save_activations=False, group_norm_num_groups=None,
-                            freeze_bn=False, freeze_bn_affine=False,
-                            num_classes=args.num_classes)
+                            freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         if args.dataset == 'HAM10000':
             patch_resnet_for_ham(self.model)
         self.model.cuda(args.gpu_id)
@@ -213,59 +280,82 @@ class Global(object):
     def initialize_for_model_fusion(self, args, list_dicts_local_params, list_nums_local_data, initial_global_params):
         fused_params = copy.deepcopy(list_dicts_local_params[0])
         num_clients = len(list_dicts_local_params)
+        total_data = sum(list_nums_local_data)
         
+        # --- 1. Ağırlıkların Belirlenmesi ---
         if args.aggregation_method == 'ShapFed':
-            # cssv_weights boyutu artık bir matris: (num_clients, args.num_classes)
+            # CSSV matrisi: (num_clients, num_classes)
             cssv_weights = compute_cssv(args, list_dicts_local_params, initial_global_params)
-            
-            # Modelin gövdesi (CNN/ResNet katmanları) için her istemcinin genel sınıf başarı ortalamasını alıyoruz
-            client_avg_weights = np.mean(cssv_weights, axis=1)
-            
-            # Ortalamayı güvenlik amacıyla toplamı 1 olacak şekilde normalize edelim
-            if np.sum(client_avg_weights) > 0:
-                client_avg_weights /= np.sum(client_avg_weights)
+            # Backbone (CNN katmanları) için istemci bazlı ortalama katkı
+            client_backbone_weights = np.mean(cssv_weights, axis=1)
+            # Normalizasyon (toplam 1 olmalı)
+            if np.sum(client_backbone_weights) > 0:
+                client_backbone_weights /= np.sum(client_backbone_weights)
             else:
-                client_avg_weights = np.ones(num_clients) / num_clients
+                client_backbone_weights = np.ones(num_clients) / num_clients
         else:
-            # FedAvg (Standart Veri Oranına Göre)
-            total_data = sum(list_nums_local_data)
-            client_avg_weights = [n / total_data for n in list_nums_local_data]
-            # FedAvg'de tüm sınıflar için aynı ağırlığı kopyalıyoruz (kod uyumluluğu için)
-            cssv_weights = np.array([[w] * args.num_classes for w in client_avg_weights])
+            # FedAvg için ağırlıklar doğrudan veri miktarıdır (n_i / N)
+            # Aşağıdaki döngüde hassasiyet için doğrudan list_nums_local_data kullanacağız.
+            client_backbone_weights = [n / total_data for n in list_nums_local_data]
 
-        # Parametreleri Birleştirme (Aggregation)
+        # --- 2. Parametre Birleştirme Döngüsü ---
         for name_param in list_dicts_local_params[0]:
             
-            # 1. Sınıflandırıcı Ağırlıkları (Her bir sınıf satırı, kendine ait CSSV ile çarpılır)
-            if name_param == 'classifier.weight':
-                fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
-                for c in range(args.num_classes): # Her bir sınıf için
-                    for i in range(num_clients):  # Her bir istemci için
-                        w_c = cssv_weights[i, c]
-                        fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
-                        
-            # 2. Sınıflandırıcı Bias Değerleri (Aynı şekilde sınıf bazlı çarpılır)
-            elif name_param == 'classifier.bias':
-                fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
-                for c in range(args.num_classes):
-                    for i in range(num_clients):
-                        w_c = cssv_weights[i, c]
-                        fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
-                        
-            # 3. Model Gövdesi (Ortalama genel ağırlıklarla çarpılır)
+            # --- SENARYO A: FedAvg (Orijinal Makale Mantığı) ---
+            if args.aggregation_method != 'ShapFed':
+                # sum(param * n_i) / N  -> En yüksek hassasiyetli FedAvg hesabı
+                list_values_param = []
+                for i in range(num_clients):
+                    list_values_param.append(list_dicts_local_params[i][name_param] * list_nums_local_data[i])
+                fused_tensor = sum(list_values_param) / total_data
+
+            # --- SENARYO B: ShapFed (Sınıf Bazlı Uzmanlık) ---
             else:
-                fused_tensor = sum(
-                    list_dicts_local_params[i][name_param] * client_avg_weights[i] 
-                    for i in range(num_clients)
-                )
-            
-            # Aşama 1 Düzeltmesi: Orijinal tensor int64 ise (BatchNorm gibi), tipi geri dönüştür
+                if name_param == 'classifier.weight' or name_param == 'classifier.bias':
+                    # Sınıflandırıcı katmanı satır satır (sınıf bazlı) birleştirilir
+                    fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
+                    for c in range(args.num_classes):
+                        for i in range(num_clients):
+                            w_c = cssv_weights[i, c]
+                            fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
+                else:
+                    # Geri kalan tüm katmanlar (Backbone) ortalama Shapley ile birleştirilir
+                    fused_tensor = sum(list_dicts_local_params[i][name_param] * client_backbone_weights[i] 
+                                       for i in range(num_clients))
+
+            # --- 3. Tip Kontrolü ve Atama ---
+            # BatchNorm istatistikleri (int64) bozulmasın diye tipi geri dönüştürüyoruz
             if list_dicts_local_params[0][name_param].dtype == torch.int64:
                 fused_params[name_param] = fused_tensor.to(torch.int64)
             else:
                 fused_params[name_param] = fused_tensor
                 
         return fused_params
+
+    def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
+        self.model.load_state_dict(fedavg_params)
+        self.model.eval()
+        all_labels, all_predicts = [], []
+        num_corrects = 0
+        with torch.no_grad():
+            for images, labels in DataLoader(data_test, batch_size_test):
+                images, labels = images.cuda(args.gpu_id), labels.cuda(args.gpu_id)
+                _, outputs = self.model(images)
+                _, predicts = torch.max(outputs, -1)
+                num_corrects += torch.sum(torch.eq(predicts.cpu(), labels.cpu())).item()
+                all_labels.extend(labels.cpu().numpy())
+                all_predicts.extend(predicts.cpu().numpy())
+        
+        accuracy = num_corrects / len(data_test)
+        acsa = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
+        macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
+        
+        torch.cuda.empty_cache() # GPU temizliği
+        return accuracy, acsa, macro_f1
+
+    def download_params(self):
+        return self.model.state_dict()
+      
 
     def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
         self.model.load_state_dict(fedavg_params)
