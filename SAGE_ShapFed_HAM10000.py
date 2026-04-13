@@ -602,7 +602,7 @@ def main_loop(alpha):
         args.num_rounds = 400
         
         cifar_mean = [0.4914, 0.4822, 0.4465]
-        cifar_std  = [0.2023, 0.1994, 0.2010]
+        cifar_std  = [0.2471, 0.2435, 0.2616] #[0.2023, 0.1994, 0.2010]
 
         # Test transformu (FixMatch train tarafında kendi transformlarını uygular)
         transform_test = transforms.Compose([
