@@ -499,14 +499,14 @@ class Local(object):
                 self.optimizer.step()
 
         
-                final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
-                # Ağırlıkları CPU'ya çekerek kopyala (Bellek birikmesini önler)
-                final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
+        final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
+        # Ağırlıkları CPU'ya çekerek kopyala (Bellek birikmesini önler)
+        final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
                 
-                # GPU'daki gradyanları tamamen temizle
-                self.optimizer.zero_grad(set_to_none=True)
+        # GPU'daki gradyanları tamamen temizle
+        self.optimizer.zero_grad(set_to_none=True)
             
-                return final_state
+        return final_state
 
     def interleave(self, x, size):
         s = list(x.shape)
