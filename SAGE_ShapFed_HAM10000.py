@@ -403,8 +403,7 @@ class Local(object):
         self.criterion = torch.nn.CrossEntropyLoss().cuda(args.gpu_id)
         self.optimizer = torch.optim.SGD(
             self.local_model.parameters(),
-            lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4,
-            nesterov=True
+            lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4
         )
 
     def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r):
