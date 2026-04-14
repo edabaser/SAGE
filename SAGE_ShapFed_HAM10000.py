@@ -429,17 +429,9 @@ class Local(object):
         # fixmatch_train içinde, for local_epoch döngüsünden önce:
         t0 = time.time()
         
-        for local_epoch in range(args.local_epochs):
-            ...
+
         
-        t1 = time.time()
-        print(f"[TIMING] Eğitim: {t1-t0:.1f}s")
-        
-        # fedavg_eval'dan önce:
-        t2 = time.time()
-        acc, acsa, macro_f1 = global_model.fedavg_eval(...)
-        t3 = time.time()
-        print(f"[TIMING] Eval: {t3-t2:.1f}s") 
+ 
 
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
@@ -524,6 +516,15 @@ class Local(object):
             
         return final_state
 
+      
+        t1 = time.time()
+        print(f"[TIMING] Eğitim: {t1-t0:.1f}s")
+        
+        # fedavg_eval'dan önce:
+        t2 = time.time()
+        acc, acsa, macro_f1 = global_model.fedavg_eval(...)
+        t3 = time.time()
+        print(f"[TIMING] Eval: {t3-t2:.1f}s")
     def interleave(self, x, size):
         s = list(x.shape)
         return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
