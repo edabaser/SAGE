@@ -426,6 +426,21 @@ class Local(object):
         self.local_G.load_state_dict(global_params)
         self.local_G.eval()
 
+        # fixmatch_train içinde, for local_epoch döngüsünden önce:
+        t0 = time.time()
+        
+        for local_epoch in range(args.local_epochs):
+            ...
+        
+        t1 = time.time()
+        print(f"[TIMING] Eğitim: {t1-t0:.1f}s")
+        
+        # fedavg_eval'dan önce:
+        t2 = time.time()
+        acc, acsa, macro_f1 = global_model.fedavg_eval(...)
+        t3 = time.time()
+        print(f"[TIMING] Eval: {t3-t2:.1f}s") 
+
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
             unlabeled_iter = iter(self.unlabeled_trainloader)
