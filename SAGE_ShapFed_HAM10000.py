@@ -16,6 +16,8 @@ from torchvision.datasets import ImageFolder
 from sklearn.metrics import recall_score, f1_score
 from sklearn.model_selection import train_test_split
 
+import time
+
 # Custom Modülleriniz (Repo'dan gelen)
 from Model.resnet import ResNet
 from options import args_parser
@@ -708,10 +710,8 @@ def main_loop(alpha):
     indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
 
 
-"""
-"""
     # ── BENCHMARK ──
-    import time
+    
 
     indices2data_labeled.load(list_client2indices_labeled[0])
     indices2data_unlabeled.load(list_client2indices_unlabeled[0])
@@ -742,8 +742,7 @@ def main_loop(alpha):
     print(f"Unlabeled client_dataset_len: {indices2data_unlabeled.client_dataset_len}")
     print(f"local_iter: {indices2data_unlabeled.client_dataset_len // 128}")
     # ── BENCHMARK SONU ──
-"""
-"""
+
   
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         dict_global_params = global_model.download_params()
