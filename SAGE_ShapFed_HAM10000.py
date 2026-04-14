@@ -514,7 +514,6 @@ class Local(object):
             
         return final_state
 
-        acc, acsa, macro_f1 = global_model.fedavg_eval(...)
 
     def interleave(self, x, size):
         s = list(x.shape)
