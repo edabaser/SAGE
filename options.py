@@ -8,7 +8,7 @@ def args_parser():
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--dataset', type=str, default='HAM10000') 
     parser.add_argument('--num_clients', type=int, default=20)
-    parser.add_argument('--num_online_clients', type=int, default=8)
+    parser.add_argument('--num_online_clients', type=int, default=8)  
     parser.add_argument('--num_labeled', type=int, default=1000, help='number of labeled data')
 
     # --- SAGE/FixMatch Parametreleri ---
@@ -20,7 +20,7 @@ def args_parser():
     parser.add_argument('--T', default=1, type=float)
 
     # --- Egitim Parametreleri ---
-    parser.add_argument('--local_epochs', type=int, default=5)
+    parser.add_argument('--local_epochs', type=int, default=2) # 5--> 2
     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=128)
     parser.add_argument('--batch_size_local_labeled', type=int, default=128)  
     parser.add_argument('--batch_size_local_unlabeled', type=int, default=128)
