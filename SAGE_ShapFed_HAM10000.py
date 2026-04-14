@@ -711,7 +711,7 @@ def main_loop(alpha):
 """
 """
     # ── BENCHMARK ──
-import time
+    import time
 
     indices2data_labeled.load(list_client2indices_labeled[0])
     indices2data_unlabeled.load(list_client2indices_unlabeled[0])
@@ -742,7 +742,6 @@ import time
     print(f"Unlabeled client_dataset_len: {indices2data_unlabeled.client_dataset_len}")
     print(f"local_iter: {indices2data_unlabeled.client_dataset_len // 128}")
     # ── BENCHMARK SONU ──
-
 """
 """
   
