@@ -580,7 +580,7 @@ def main_loop(alpha):
     if args.dataset == 'HAM10000':
         args.num_classes = 7
         # args.num_labeled = 1000
-        args.num_rounds  = 400
+        args.num_rounds  = 300
         ham_mean = [0.763, 0.545, 0.570]
         ham_std  = [0.140, 0.152, 0.169]
 
@@ -618,7 +618,7 @@ def main_loop(alpha):
     elif args.dataset == 'CIFAR10':
         args.num_classes = 10
         # args.num_labeled komut satırından gelecek, burada ezmiyoruz.
-        args.num_rounds = 400
+        args.num_rounds = 300
         
         cifar_mean = [0.4914, 0.4822, 0.4465]
         cifar_std  = [0.2471, 0.2435, 0.2616] #[0.2023, 0.1994, 0.2010]
