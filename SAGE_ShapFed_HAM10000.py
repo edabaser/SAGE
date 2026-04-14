@@ -29,12 +29,16 @@ from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-
+def get_exp_name(args):
+    """Tüm sistemde tutarlı bir deney ismi oluşturur."""
+    return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
+            f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}")
+  
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
                     args, filename='checkpoint.pt', backup_every=3):
     
     # Dinamik klasör ismi oluşturma: HAM10000_a0.1_ShapFed_L1000
-    folder_name = f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
+    folder_name = get_exp_name(args) #f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
     
     os.makedirs(local_ckpt_dir, exist_ok=True)
     state = {
@@ -69,7 +73,7 @@ def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
 
 def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
     s3 = boto3.client('s3')
-    folder_name = f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
+    folder_name = get_exp_name(args) #f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_L{args.num_labeled}"
     local_path = os.path.join(local_ckpt_dir, filename)
     s3_path = f"checkpoints/{folder_name}/{filename}"
 
@@ -558,13 +562,24 @@ def sync_data_from_s3(args):
 
 def main_loop(alpha):
     args = args_parser()
+    args.alpha = alpha
     args.s3_bucket = 'sage-ham10k-eda'
     # Veriyi S3'ten EBS'e cekiyoruz (Burasi cok onemli)
     sync_data_from_s3(args)
 
+
+  
+    # Deney ismini al
+    exp_name = get_exp_name(args)
+    
+    # AWS yerel EBS dizini
+    local_ckpt_dir = os.path.join(args.checkpoint_dir, exp_name)
+
+
+  
     log_dir  = f'./results/{args.dataset}/logs'
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f'SAGE_{args.aggregation_method}_alpha={alpha}.log')
+    log_file = os.path.join(log_dir,f'{exp_name}.log')
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -658,9 +673,7 @@ def main_loop(alpha):
         exit(1)
 
     # AWS icin yerel EBS'de checkpoints klasorunu duzenliyoruz
-    local_ckpt_dir = os.path.join(
-        args.checkpoint_dir, f'{args.dataset}_a{alpha}_{args.aggregation_method}_L{args.num_labeled}'
-    )
+    local_ckpt_dir = os.path.join(args.checkpoint_dir,exp_name)
     
     # drive_ckpt_dir'i silebiliriz veya hata vermemesi için local ile aynı yapabiliriz
     drive_ckpt_dir = local_ckpt_dir 
