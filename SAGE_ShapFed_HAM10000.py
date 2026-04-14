@@ -428,10 +428,6 @@ class Local(object):
 
         # fixmatch_train içinde, for local_epoch döngüsünden önce:
         t0 = time.time()
-        
-
-        
- 
 
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
@@ -506,7 +502,7 @@ class Local(object):
                 loss.backward()
                 self.optimizer.step()
 
-        
+        print(f"[TIMING] Eğitim: {time.time()-t0:.1f}s")  
         final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
         # Ağırlıkları CPU'ya çekerek kopyala (Bellek birikmesini önler)
         final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
@@ -768,18 +764,28 @@ def main_loop(alpha):
         list_nums_local_data    = []
 
         for client in online_clients:
+            t_load = time.time()
+          
             indices2data_labeled.load(list_client2indices_labeled[client])
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
+
+            print(f"[TIMING] Load: {time.time()-t_load:.1f}s")
+
+        
             # list_nums_local_data.append(
             #     len(indices2data_labeled) + len(indices2data_unlabeled)
             # )
             list_nums_local_data.append(
             len(list_client2indices_labeled[client]) + len(list_client2indices_unlabeled[client])
             )
+            t_train = time.time()
+          
             local_params = local_model.fixmatch_train(
                 args, indices2data_labeled, indices2data_unlabeled,
                 copy.deepcopy(dict_global_params), r
             )
+            print(f"[TIMING] Train: {time.time()-t_train:.1f}s")
+          
             list_dicts_local_params.append(copy.deepcopy(local_params))
 
             del local_params
