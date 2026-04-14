@@ -73,7 +73,7 @@ class Indices2Dataset_labeled(Dataset):
     def load(self, indices: list):
         self.indices = indices
         self.client_dataset = [self.dataset[i] for i in indices]
-        self.client_dataset *= 2000 
+        # self.client_dataset *= 2000 
         
         sample_img, _ = self.client_dataset[0]
         if hasattr(sample_img, 'size'): 
