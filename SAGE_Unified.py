@@ -142,7 +142,7 @@ class Global(object):
         self.model.eval()
         num_corrects = 0
         with torch.no_grad():
-            test_loader = DataLoader(data_test, batch_size_test)
+            test_loader = DataLoader(data_test, batch_size_test, num_workers=0, pin_memory=False)
             for images, labels in test_loader:
                 images, labels = images.cuda(args.gpu_id), labels.cuda(args.gpu_id)
                 _, outputs = self.model(images)
@@ -166,8 +166,8 @@ class Local(object):
         self.optimizer = SGD(self.local_model.parameters(), lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4)
 
     def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r):
-        self.labeled_trainloader = DataLoader(data_client_labeled, sampler=RandomSampler(data_client_labeled), batch_size=args.batch_size_local_labeled_fixmatch, drop_last=True, num_workers=2, pin_memory=True)
-        self.unlabeled_trainloader = DataLoader(data_client_unlabeled, sampler=RandomSampler(data_client_unlabeled), batch_size=args.batch_size_local_labeled_fixmatch * args.mu, drop_last=True, num_workers=2, pin_memory=True)
+        self.labeled_trainloader = DataLoader(data_client_labeled, sampler=RandomSampler(data_client_labeled), batch_size=args.batch_size_local_labeled_fixmatch, drop_last=True, num_workers=0, pin_memory=False)
+        self.unlabeled_trainloader = DataLoader(data_client_unlabeled, sampler=RandomSampler(data_client_unlabeled), batch_size=args.batch_size_local_labeled_fixmatch * args.mu, drop_last=True, num_workers=0, pin_memory=False)
         
         self.local_model.load_state_dict(global_params); self.local_model.train()
         self.local_G.load_state_dict(global_params); self.local_G.eval()
