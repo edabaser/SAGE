@@ -431,7 +431,6 @@ class Local(object):
         self.local_G.eval()
 
         # fixmatch_train içinde, for local_epoch döngüsünden önce:
-        t0 = time.time()
 
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
@@ -506,7 +505,6 @@ class Local(object):
                 loss.backward()
                 self.optimizer.step()
 
-        print(f"[TIMING] Eğitim: {time.time()-t0:.1f}s")  
         final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
         # Ağırlıkları CPU'ya çekerek kopyala (Bellek birikmesini önler)
         final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
@@ -516,15 +514,8 @@ class Local(object):
             
         return final_state
 
-      
-        t1 = time.time()
-        print(f"[TIMING] Eğitim: {t1-t0:.1f}s")
-        
-        # fedavg_eval'dan önce:
-        t2 = time.time()
         acc, acsa, macro_f1 = global_model.fedavg_eval(...)
-        t3 = time.time()
-        print(f"[TIMING] Eval: {t3-t2:.1f}s")
+
     def interleave(self, x, size):
         s = list(x.shape)
         return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
@@ -734,40 +725,6 @@ def main_loop(alpha):
     indices2data_labeled   = Indices2Dataset_labeled(data_local_training)
     indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
 
-
-    # ── BENCHMARK ──
-    
-
-    indices2data_labeled.load(list_client2indices_labeled[0])
-    indices2data_unlabeled.load(list_client2indices_unlabeled[0])
-
-    labeled_loader_bm = DataLoader(
-        indices2data_labeled,
-        sampler=RandomSampler(indices2data_labeled),
-        batch_size=128, drop_last=True, num_workers=2, pin_memory=True
-    )
-    unlabeled_loader_bm = DataLoader(
-        indices2data_unlabeled,
-        sampler=RandomSampler(indices2data_unlabeled),
-        batch_size=256, drop_last=True, num_workers=2, pin_memory=True
-    )
-
-    t = time.time()
-    for i, batch in enumerate(labeled_loader_bm):
-        if i == 10: break
-    print(f"Labeled  10 batch: {time.time()-t:.2f}s")
-
-    t = time.time()
-    for i, batch in enumerate(unlabeled_loader_bm):
-        if i == 10: break
-    print(f"Unlabeled 10 batch: {time.time()-t:.2f}s")
-
-    print(f"Labeled   len: {len(indices2data_labeled)}")
-    print(f"Unlabeled len: {len(indices2data_unlabeled)}")
-    print(f"Unlabeled client_dataset_len: {indices2data_unlabeled.client_dataset_len}")
-    print(f"local_iter: {indices2data_unlabeled.client_dataset_len // 128}")
-    # ── BENCHMARK SONU ──
-
   
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         dict_global_params = global_model.download_params()
@@ -777,12 +734,10 @@ def main_loop(alpha):
         list_nums_local_data    = []
 
         for client in online_clients:
-            t_load = time.time()
           
             indices2data_labeled.load(list_client2indices_labeled[client])
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
 
-            print(f"[TIMING] Load: {time.time()-t_load:.1f}s")
 
         
             # list_nums_local_data.append(
@@ -791,13 +746,11 @@ def main_loop(alpha):
             list_nums_local_data.append(
             len(list_client2indices_labeled[client]) + len(list_client2indices_unlabeled[client])
             )
-            t_train = time.time()
           
             local_params = local_model.fixmatch_train(
                 args, indices2data_labeled, indices2data_unlabeled,
                 copy.deepcopy(dict_global_params), r
             )
-            print(f"[TIMING] Train: {time.time()-t_train:.1f}s")
           
             list_dicts_local_params.append(copy.deepcopy(local_params))
 
