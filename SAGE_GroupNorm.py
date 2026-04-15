@@ -30,15 +30,16 @@ from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-def get_exp_name(args):
-    """Tüm sistemde tutarlı bir deney ismi oluşturur."""
-    return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
-            f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}")
+
 def get_exp_name(args):
     """Tüm sistemde tutarlı ve detaylı bir deney ismi oluşturur."""
+    # Normalizasyon tipini belirle
+    norm_type = f"GN{args.group_norm_num_groups}" if args.group_norm_num_groups else "BN"
+  
     return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
-            f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}_"
+            f"{norm_type}_L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}_"
             f"T{args.threshold}_LR{args.lr_local_training}")
+
   
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
                     args, filename='checkpoint.pt', backup_every=3):
