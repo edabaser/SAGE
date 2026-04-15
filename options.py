@@ -28,6 +28,8 @@ def args_parser():
     parser.add_argument('--lr_local_training', type=float, default=0.1)
     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
 
+    parser.add_argument('--group_norm_num_groups', type=int, default=16, help="Number of groups for GN")
+
     # --- Aggregation ve Shapley ---
     parser.add_argument('--aggregation_method', type=str, default='ShapFed') 
     parser.add_argument('--shapley_samples', type=int, default=10)
