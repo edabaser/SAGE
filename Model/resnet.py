@@ -1,5 +1,5 @@
-# from torchvision.models import resnet18, resnet34, resnet50, resnet101, resnet152
-# from torch.nn import Module, Conv2d, Linear, MaxPool2d
+from torchvision.models import resnet18, resnet34, resnet50, resnet101, resnet152
+from torch.nn import Module, Conv2d, Linear, MaxPool2d
 # import math
 # import torch.nn as nn
 # import copy
@@ -313,14 +313,162 @@
 #                    group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=10)
 
 
+# import math
+# import torch
+# import torch.nn as nn
+
+# def norm2d(group_norm_num_groups, planes):
+#     if group_norm_num_groups is not None and group_norm_num_groups > 0:
+#         return nn.GroupNorm(group_norm_num_groups, planes)
+#     else:
+#         return nn.BatchNorm2d(planes)
+
+# def conv3x3(in_planes, out_planes, stride=1):
+#     return nn.Conv2d(
+#         in_channels=in_planes,
+#         out_channels=out_planes,
+#         kernel_size=3,
+#         stride=stride,
+#         padding=1,
+#         bias=False,
+#     )
+
+# class BasicBlock(nn.Module):
+#     expansion = 1
+#     def __init__(self, in_planes, out_planes, stride=1, downsample=None, group_norm_num_groups=None):
+#         super(BasicBlock, self).__init__()
+#         self.conv1 = conv3x3(in_planes, out_planes, stride)
+#         self.bn1 = norm2d(group_norm_num_groups, planes=out_planes)
+#         self.relu = nn.ReLU(inplace=True)
+#         self.conv2 = conv3x3(out_planes, out_planes)
+#         self.bn2 = norm2d(group_norm_num_groups, planes=out_planes)
+#         self.downsample = downsample
+#         self.stride = stride
+
+#     def forward(self, x):
+#         residual = x
+#         out = self.conv1(x)
+#         out = self.bn1(out)
+#         out = self.relu(out)
+#         out = self.conv2(out)
+#         out = self.bn2(out)
+#         if self.downsample is not None:
+#             residual = self.downsample(x)
+#         out += residual
+#         out = self.relu(out)
+#         return out
+
+# class Bottleneck(nn.Module):
+#     expansion = 4
+#     def __init__(self, in_planes, out_planes, stride=1, downsample=None, group_norm_num_groups=None):
+#         super(Bottleneck, self).__init__()
+#         self.conv1 = nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False)
+#         self.bn1 = norm2d(group_norm_num_groups, planes=out_planes)
+#         self.conv2 = nn.Conv2d(out_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+#         self.bn2 = norm2d(group_norm_num_groups, planes=out_planes)
+#         self.conv3 = nn.Conv2d(out_planes, out_planes * 4, kernel_size=1, bias=False)
+#         self.bn3 = norm2d(group_norm_num_groups, planes=out_planes * 4)
+#         self.relu = nn.ReLU(inplace=True)
+#         self.downsample = downsample
+
+#     def forward(self, x):
+#         residual = x
+#         out = self.relu(self.bn1(self.conv1(x)))
+#         out = self.relu(self.bn2(self.conv2(out)))
+#         out = self.bn3(self.conv3(out))
+#         if self.downsample is not None:
+#             residual = self.downsample(x)
+#         out += residual
+#         return self.relu(out)
+
+# class ResNet(nn.Module):
+#     def __init__(self, resnet_size=8, scaling=4, save_activations=False, 
+#                  group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=10):
+#         super(ResNet, self).__init__()
+#         self.freeze_bn = freeze_bn
+#         self.freeze_bn_affine = freeze_bn_affine
+#         self.num_classes = num_classes
+
+#         if resnet_size % 6 != 2:
+#             raise ValueError("resnet_size must be 6n + 2:", resnet_size)
+#         block_nums = (resnet_size - 2) // 6
+#         block_fn = Bottleneck if resnet_size >= 44 else BasicBlock
+
+#         self.inplanes = int(16 * scaling)
+#         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
+#         self.bn1 = norm2d(group_norm_num_groups, planes=self.inplanes)
+#         self.relu = nn.ReLU(inplace=True)
+
+#         self.layer1 = self._make_block(block_fn, int(16 * scaling), block_nums, 1, group_norm_num_groups)
+#         self.layer2 = self._make_block(block_fn, int(32 * scaling), block_nums, 2, group_norm_num_groups)
+#         self.layer3 = self._make_block(block_fn, int(64 * scaling), block_nums, 2, group_norm_num_groups)
+
+#         # KRİTİK DEĞİŞİKLİK: Sabit kernel yerine AdaptiveAvgPool
+#         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+#         self.classifier = nn.Linear(int(64 * scaling * block_fn.expansion), self.num_classes)
+#         self._weight_initialization()
+#         self.save_activations = save_activations
+
+#     def _make_block(self, block_fn, planes, block_num, stride=1, group_norm_num_groups=None):
+#         downsample = None
+#         if stride != 1 or self.inplanes != planes * block_fn.expansion:
+#             downsample = nn.Sequential(
+#                 nn.Conv2d(self.inplanes, planes * block_fn.expansion, kernel_size=1, stride=stride, bias=False),
+#                 norm2d(group_norm_num_groups, planes=planes * block_fn.expansion),
+#             )
+#         layers = [block_fn(self.inplanes, planes, stride, downsample, group_norm_num_groups)]
+#         self.inplanes = planes * block_fn.expansion
+#         for _ in range(1, block_num):
+#             layers.append(block_fn(self.inplanes, planes, 1, None, group_norm_num_groups))
+#         return nn.Sequential(*layers)
+
+#     def _weight_initialization(self):
+#         for m in self.modules():
+#             if isinstance(m, nn.Conv2d):
+#                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+#             elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
+#                 nn.init.constant_(m.weight, 1)
+#                 nn.init.constant_(m.bias, 0)
+
+#     def forward(self, x):
+#         x = self.relu(self.bn1(self.conv1(x)))
+#         x = self.layer1(x)
+#         a1 = x
+#         x = self.layer2(x)
+#         a2 = x
+#         x = self.layer3(x)
+#         a3 = x
+        
+#         x = self.avgpool(x)
+#         x = torch.flatten(x, 1)
+#         feature = x
+#         y = self.classifier(x)
+        
+#         if self.save_activations:
+#             self.activations = [a1, a2, a3]
+#         return feature, y
+
+#     def train(self, mode=True):
+#         super(ResNet, self).train(mode)
+#         if self.freeze_bn:
+#             for m in self.modules():
+#                 if isinstance(m, nn.BatchNorm2d):
+#                     m.eval()
+#                     if self.freeze_bn_affine:
+#                         m.weight.requires_grad = False
+#                         m.bias.requires_grad = False
 import math
 import torch
 import torch.nn as nn
 
 def norm2d(group_norm_num_groups, planes):
+    # Eğer group_norm parametresi verildiyse ve 0'dan büyükse GroupNorm kullan
     if group_norm_num_groups is not None and group_norm_num_groups > 0:
+        # Uyarı: planes (kanal sayısı), num_groups'a tam bölünmelidir!
         return nn.GroupNorm(group_norm_num_groups, planes)
     else:
+        # Aksi halde standart BatchNorm kullan
         return nn.BatchNorm2d(planes)
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -383,7 +531,7 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
     def __init__(self, resnet_size=8, scaling=4, save_activations=False, 
-                 group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=10):
+                 group_norm_num_groups=16, freeze_bn=False, freeze_bn_affine=False, num_classes=7):
         super(ResNet, self).__init__()
         self.freeze_bn = freeze_bn
         self.freeze_bn_affine = freeze_bn_affine
@@ -403,7 +551,7 @@ class ResNet(nn.Module):
         self.layer2 = self._make_block(block_fn, int(32 * scaling), block_nums, 2, group_norm_num_groups)
         self.layer3 = self._make_block(block_fn, int(64 * scaling), block_nums, 2, group_norm_num_groups)
 
-        # KRİTİK DEĞİŞİKLİK: Sabit kernel yerine AdaptiveAvgPool
+        # HAM10000 için esnek ve doğru pooling
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         
         self.classifier = nn.Linear(int(64 * scaling * block_fn.expansion), self.num_classes)
@@ -453,7 +601,7 @@ class ResNet(nn.Module):
         super(ResNet, self).train(mode)
         if self.freeze_bn:
             for m in self.modules():
-                if isinstance(m, nn.BatchNorm2d):
+                if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
                     m.eval()
                     if self.freeze_bn_affine:
                         m.weight.requires_grad = False
