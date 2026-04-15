@@ -282,7 +282,7 @@ def patch_resnet_for_ham(model):
 class Global(object):
     def __init__(self, args):
         self.model = ResNet(resnet_size=8, scaling=4,
-                            save_activations=False, group_norm_num_groups=None,
+                            save_activations=False, group_norm_num_groups=16,
                             freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
         if args.dataset == 'HAM10000':
             patch_resnet_for_ham(self.model)
