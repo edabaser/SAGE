@@ -131,7 +131,7 @@ def compute_cssv(args, local_models_params, initial_global_params):
       
       # 2. Sınıf bazlı Shapley Matrisi: Boyut (num_clients, num_classes)
     shapley_values = np.zeros((num_clients, num_classes))
-    num_samples = getattr(args, 'shapley_samples', 10)
+    num_samples = getattr(args, 'shapley_samples', 50)  #10--> 50 
 
     for _ in range(num_samples):
         permutation = np.random.permutation(num_clients)
@@ -471,8 +471,20 @@ class Local(object):
         self.local_G.load_state_dict(global_params)
         self.local_G.eval()
 
-        # fixmatch_train içinde, for local_epoch döngüsünden önce:
 
+
+        # FedProx için Global Parametreleri Dondur (Referans olarak kullanacağız)
+        # GPU'da tutmak hesaplamayı hızlandırır
+        global_weight_dict = {k: v.cuda(args.gpu_id) for k, v in global_params.items()}
+        
+        # FedProx katsayısı (Genelde 0.01 veya 0.001 idealdir)
+        mu_prox = getattr(args, 'mu_prox', 0.01)
+
+
+      
+
+        # fixmatch_train içinde, for local_epoch döngüsünden önce:
+      
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
             unlabeled_iter = iter(self.unlabeled_trainloader)
@@ -497,6 +509,8 @@ class Local(object):
                 targets_x  = targets_x.cuda(args.gpu_id)
                 batch_size = inputs_x.shape[0]
 
+              
+# FixMatch Interleave (BN/GN kararlılığı için)
                 inputs = self.interleave(
                     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1
                 ).cuda(args.gpu_id)
@@ -509,13 +523,27 @@ class Local(object):
 
                 Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
-                _, logits_u_w_global = self.local_G(inputs_u_w)
-                pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
-                max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
 
-                pseudo_label_local = torch.softmax(logits_u_w.detach() / args.T, dim=-1)
-                max_probs_local, targets_u_local = torch.max(pseudo_label_local, dim=-1)
+              # --- LOSS 2: Unlabeled Loss (Pseudo-labeling) ---
+                with torch.no_grad():
+                    _, logits_u_w_global = self.local_G(inputs_u_w)
+                    pseudo_label_global  = torch.softmax(logits_u_w_global / args.T, dim=-1)
+                    max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
 
+                    pseudo_label_local = torch.softmax(logits_u_w / args.T, dim=-1)
+                    max_probs_local, targets_u_local = torch.max(pseudo_label_local, dim=-1)
+
+
+              
+                # _, logits_u_w_global = self.local_G(inputs_u_w)
+                # pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
+                # max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
+
+                # pseudo_label_local = torch.softmax(logits_u_w.detach() / args.T, dim=-1)
+                # max_probs_local, targets_u_local = torch.max(pseudo_label_local, dim=-1)
+
+
+              
                 targets_u_local_one_hot  = F.one_hot(targets_u_local,  args.num_classes).float()
                 targets_u_global_one_hot = F.one_hot(targets_u_global, args.num_classes).float()
 
@@ -540,18 +568,32 @@ class Local(object):
 
                 Lu   = (F.kl_div(logits_u_s_probs.log(), final_targets_u,
                                  reduction='none').sum(-1) * mask_valid).mean()
-                loss = Lx + args.lambda_u * Lu
+
+              #old loss func. 
+                # loss = Lx + args.lambda_u * Lu
+
+              # --- LOSS 3: FedProx (Proximal Term) ---
+                # Modelin globalden çok uzaklaşmasını cezalandırır
+                proximal_term = 0.0
+                for name, param in self.local_model.named_parameters():
+                    proximal_term += (param - global_weight_dict[name]).norm(2)**2
+                
+                # Toplam Kayıp Fonksiyonu
+                loss = Lx + args.lambda_u * Lu + (mu_prox / 2) * proximal_term
+
+              
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-        final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
         # Ağırlıkları CPU'ya çekerek kopyala (Bellek birikmesini önler)
         final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
                 
         # GPU'daki gradyanları tamamen temizle
         self.optimizer.zero_grad(set_to_none=True)
+        del global_weight_dict, inputs_x, inputs_u_w, inputs_u_s, targets_x
+        torch.cuda.empty_cache()
             
         return final_state
 
