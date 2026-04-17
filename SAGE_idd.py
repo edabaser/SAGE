@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from torchvision.datasets import ImageFolder
 from sklearn.metrics import recall_score, f1_score
 from sklearn.model_selection import train_test_split
-
+import json
 import time
 
 # Custom Modülleriniz (Repo'dan gelen)
@@ -360,9 +360,13 @@ class Global(object):
         accuracy = num_corrects / len(data_test)
         acsa = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
         macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
+
+# BURA EKLENDİ
+        pred_dist = dict(Counter(all_predicts)) 
+        
         
         torch.cuda.empty_cache() # GPU temizliği
-        return accuracy, acsa, macro_f1
+        return accuracy, acsa, macro_f1, pred_dist
 
     def download_params(self):
         return self.model.state_dict()
@@ -436,6 +440,9 @@ class Local(object):
         self.local_G.eval()
 
         # fixmatch_train içinde, for local_epoch döngüsünden önce:
+      #Tüm local epoch boyunca biriktireceğiz
+  
+        epoch_pseudo_labels = []
 
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
@@ -499,6 +506,14 @@ class Local(object):
                 )
                 mask_valid = torch.max(mask_local, mask_global)
 
+              
+          #jason çıktısı için eklendi
+                # valid_pseudo_labels = targets_u_local[mask_valid.bool()]
+                # pseudo_dist = Counter(valid_pseudo_labels.cpu().numpy().tolist())
+                valid_pseudo = targets_u_local[mask_valid.bool()].cpu().numpy().tolist()
+                epoch_pseudo_labels.extend(valid_pseudo)
+                # Bunu return ile main_loop'a taşı
+
                 logits_u_s_probs = torch.softmax(logits_u_s, dim=-1) + 1e-10
                 final_targets_u  = final_targets_u + 1e-10
 
@@ -516,8 +531,10 @@ class Local(object):
                 
         # GPU'daki gradyanları tamamen temizle
         self.optimizer.zero_grad(set_to_none=True)
-            
-        return final_state
+
+
+        pseudo_dist = dict(Counter(epoch_pseudo_labels))
+        return final_state, pseudo_dist
 
 
     def interleave(self, x, size):
@@ -729,6 +746,9 @@ def main_loop(alpha):
     indices2data_labeled   = Indices2Dataset_labeled(data_local_training)
     indices2data_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training)
 
+  #json çıktııs için eklendi
+    dashboard_data = {} # Döngü dışında tanımla
+    os.makedirs('./results/HAM10000', exist_ok=True) # Klasörün olduğundan emin olalım
   
     for r in tqdm(range(start_round, args.num_rounds + 1), desc='Server'):
         dict_global_params = global_model.download_params()
@@ -737,13 +757,20 @@ def main_loop(alpha):
         list_dicts_local_params = []
         list_nums_local_data    = []
 
+        # BURA EKLENDİ: Bu round için verileri tutacak yapılar
+        round_client_dists = {} 
+        round_pseudo_dists = Counter()
+
         for client in online_clients:
           
             indices2data_labeled.load(list_client2indices_labeled[client])
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
 
+          #json çıktııs için eklendi
+            lbl_counts = Counter([data_local_training.targets[i] for i in list_client2indices_labeled[client]])
+            round_client_dists[str(client)] = dict(lbl_counts)
 
-        
+      
             # list_nums_local_data.append(
             #     len(indices2data_labeled) + len(indices2data_unlabeled)
             # )
@@ -751,12 +778,13 @@ def main_loop(alpha):
             len(list_client2indices_labeled[client]) + len(list_client2indices_unlabeled[client])
             )
           
-            local_params = local_model.fixmatch_train(
+            local_params, pseudo_dist = local_model.fixmatch_train(
                 args, indices2data_labeled, indices2data_unlabeled,
                 copy.deepcopy(dict_global_params), r
             )
           
             list_dicts_local_params.append(copy.deepcopy(local_params))
+            round_pseudo_dists.update(pseudo_dist) # Toplam pseudo sayısını güncelle
 
             del local_params
             torch.cuda.empty_cache()
@@ -766,9 +794,22 @@ def main_loop(alpha):
         )
         global_model.model.load_state_dict(fedavg_params)
 
-        acc, acsa, macro_f1 = global_model.fedavg_eval(
+        acc, acsa, macro_f1, global_pred_dist = global_model.fedavg_eval(
             copy.deepcopy(fedavg_params), data_global_test, args.batch_size_test, args
         )
+
+
+
+      # BURA EKLENDİ: JSON Dosyasını Güncelle ve Diske Yaz
+        dashboard_data[str(r)] = {
+            "client_distributions": round_client_dists,
+            "pseudo_labels": dict(round_pseudo_dists),
+            "global_predictions": global_pred_dist
+        }
+        with open('./results/HAM10000/dashboard_data.json', 'w') as f:
+            json.dump(dashboard_data, f, indent=4)
+
+      
         metrics_history['acc'].append(acc)
         metrics_history['acsa'].append(acsa)
         metrics_history['f1'].append(macro_f1)
