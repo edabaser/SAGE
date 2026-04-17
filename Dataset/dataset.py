@@ -395,13 +395,42 @@ class Indices2Dataset_unlabeled_fixmatch(Dataset):
 
     def load(self, indices: list):
         self.indices = indices
-        self.client_dataset = [self.dataset[i] for i in self.indices]
-        self.client_dataset_len = len(self.client_dataset)
+        # self.client_dataset = [self.dataset[i] for i in self.indices]
+        # self.client_dataset_len = len(self.client_dataset)
         
+        # if self.dataset_name == 'HAM10000':
+        #     self.client_dataset *= 5 
+        # else:
+        #     self.client_dataset *= 50 # ORİJİNAL SAGE ÇARPANI
+
+    #Inverse Frequenct-y Balancing
         if self.dataset_name == 'HAM10000':
-            self.client_dataset *= 5 
+            targets = [self.dataset.targets[i] for i in self.indices]
+            class_counts = Counter(targets)
+            
+            if not class_counts:
+                self.client_dataset = []
+                self.client_dataset_len = 0
+                return
+                
+            max_count = max(class_counts.values())
+            self.client_dataset = []
+            
+            for idx, target in zip(self.indices, targets):
+                # Unlabeled için base_multiplier'ı 2 yapıyoruz çünkü FixMatch 
+                # zaten unlabeled veriyi args.mu (genelde 2 veya 7) ile çarpıp çekiyor.
+                base_multiplier = 2
+                weight = max(1, int(max_count / class_counts[target])) * base_multiplier
+                self.client_dataset.extend([self.dataset[idx]] * weight)
+                
+            self.client_dataset_len = len(self.client_dataset)
         else:
-            self.client_dataset *= 50 # ORİJİNAL SAGE ÇARPANI
+            # STRICT ORIGINAL SAGE LOGIC FOR CIFAR
+            self.client_dataset = [self.dataset[i] for i in self.indices]
+            self.client_dataset *= 50
+            self.client_dataset_len = len(self.client_dataset)
+
+    
 
     def fixmatch(self, image):
         if self.dataset_name == 'HAM10000':
