@@ -279,6 +279,7 @@ from PIL import Image
 from torchvision import transforms
 from .randaugment import RandAugmentMC
 from Dataset.sample_dirichlet import clients_indices, clients_indices_unlabel
+from collections import Counter
 
 def classify_label(dataset, num_classes: int):
     list_label2indices = [[] for _ in range(num_classes)]
@@ -321,14 +322,44 @@ class Indices2Dataset_labeled(Dataset):
 
     def load(self, indices: list):
         self.indices = indices
-        self.client_dataset = [self.dataset[i] for i in indices]
-        
-        # Orijinal SAGE Hack: Labeled veriyi çoğalt ki Iteration Stop hatası vermesin
-        if self.dataset_name == 'HAM10000':
-            self.client_dataset *= 10 # Medikal veri çok ağır, fazla çarpmıyoruz
-        else:
-            self.client_dataset *= 2000 # ORİJİNAL SAGE ÇARPANI
 
+    #eski ctastrohic forgetting code
+        # self.client_dataset = [self.dataset[i] for i in indices]
+        
+        # # Orijinal SAGE Hack: Labeled veriyi çoğalt ki Iteration Stop hatası vermesin
+        # if self.dataset_name == 'HAM10000':
+        #     self.client_dataset *= 10 # Medikal veri çok ağır, fazla çarpmıyoruz
+        # else:
+        #     self.client_dataset *= 2000 # ORİJİNAL SAGE ÇARPANI
+    
+# yeni - Inverse Frequency Balancing
+
+        if self.dataset_name == 'HAM10000':
+            # 1. Bu istemciye atanan verilerin etiketlerini bul
+            targets = [self.dataset.targets[i] for i in indices]
+            class_counts = Counter(targets)
+            
+            # Eğer istemcide hiç veri yoksa çökmemesi için güvenlik
+            if not class_counts:
+                self.client_dataset = []
+                return
+                
+            max_count = max(class_counts.values())
+            
+            self.client_dataset = []
+            for idx, target in zip(indices, targets):
+                # 2. Dinamik Çarpan: Nadir sınıf çok çoğaltılır, baskın sınıf (nv) az çoğaltılır.
+                # Örn: nv 100 tane, vasc 5 taneyse -> nv çarpanı 1, vasc çarpanı 20 olur.
+                # Base multiplier (örneğin 3) ekleyerek Iteration Stop hatasını önlüyoruz.
+                base_multiplier = 3 
+                weight = max(1, int(max_count / class_counts[target])) * base_multiplier
+                self.client_dataset.extend([self.dataset[idx]] * weight)
+                
+        else:
+            self.client_dataset = [self.dataset[i] for i in indices]
+            self.client_dataset *= 2000
+#yeni sonu
+    
     def __getitem__(self, idx):
         image, label = self.client_dataset[idx]
         
