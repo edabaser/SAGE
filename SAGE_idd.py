@@ -769,9 +769,8 @@ def main_loop(alpha):
 
           #json çıktııs için eklendi
             lbl_counts = Counter([data_local_training.targets[i] for i in list_client2indices_labeled[client]])
-            round_client_dists[str(client)] = dict(lbl_counts)
+            round_client_dists[str(client)] = {str(k): v for k, v in lbl_counts.items()}
 
-      
             # list_nums_local_data.append(
             #     len(indices2data_labeled) + len(indices2data_unlabeled)
             # )
@@ -804,13 +803,13 @@ def main_loop(alpha):
       # BURA EKLENDİ: JSON Dosyasını Güncelle ve Diske Yaz
         dashboard_data[str(r)] = {
             "client_distributions": round_client_dists,
-            "pseudo_labels": dict(round_pseudo_dists),
-            "global_predictions": global_pred_dist
+            "pseudo_labels": {str(k): v for k, v in round_pseudo_dists.items()},
+            "global_predictions":  {str(k): v for k, v in global_pred_dist.items()} # Keyleri stringe çevirdik
         }
         with open('./results/HAM10000/dashboard_data.json', 'w') as f:
             json.dump(dashboard_data, f, indent=4)
 
-      
+
         metrics_history['acc'].append(acc)
         metrics_history['acsa'].append(acsa)
         metrics_history['f1'].append(macro_f1)
