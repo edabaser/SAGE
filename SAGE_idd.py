@@ -17,6 +17,7 @@ from sklearn.metrics import recall_score, f1_score
 from sklearn.model_selection import train_test_split
 import json
 import time
+from collections import Counter
 
 # Custom Modülleriniz (Repo'dan gelen)
 from Model.resnet import ResNet
