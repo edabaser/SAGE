@@ -763,7 +763,7 @@ def main_loop(alpha):
         round_pseudo_dists = Counter()
 
         for client in online_clients:
-          
+            print(f"--> Client {client} eğitimi başlıyor...")
             indices2data_labeled.load(list_client2indices_labeled[client])
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
 
