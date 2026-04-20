@@ -732,7 +732,7 @@ def main_loop(alpha):
         }
         log_path = './results/HAM10000/dashboard_data.json'
       
-        with open('log_path, 'w') as f:
+        with open(log_path, 'w') as f:
             json.dump(dashboard_data, f, indent=4)
 
         try:
