@@ -34,7 +34,9 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 def get_pretrained_model(num_classes):
     # Ön-eğitimli modeli indir
-    model = models.resnet18(pretrained=True)
+    from torchvision.models import ResNet18_Weights
+    model = models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+  
     # Son katmanı (classifier) bizim sınıf sayımıza göre (7) değiştir
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, num_classes)
@@ -302,7 +304,7 @@ class Global(object):
         with torch.no_grad():
             for images, labels in DataLoader(data_test, batch_size_test):
                 images, labels = images.cuda(args.gpu_id), labels.cuda(args.gpu_id)
-                _, outputs = self.model(images)
+                outputs = self.model(images)
                 _, predicts = torch.max(outputs, -1)
                 num_corrects += torch.sum(torch.eq(predicts.cpu(), labels.cpu())).item()
                 all_labels.extend(labels.cpu().numpy())
@@ -392,7 +394,7 @@ class Local(object):
                     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1
                 ).cuda(args.gpu_id)
 
-                _, logits = self.local_model(inputs)
+                logits = self.local_model(inputs)
                 logits    = self.de_interleave(logits, 2 * args.mu + 1)
                 logits_x  = logits[:batch_size]
                 logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
@@ -400,9 +402,9 @@ class Local(object):
 
                 # ESKİ : Lx = F.cross_entropy(logits_x, targets_x, reduction='mean') altaki yeni focal loss
                 
-                # Lx = focal_loss(logits_x, targets_x) # YENİSİ
+                Lx = focal_loss(logits_x, targets_x) # YENİSİ
 
-                _, logits_u_w_global = self.local_G(inputs_u_w)
+                logits_u_w_global = self.local_G(inputs_u_w)
                 pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
                 max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
 
