@@ -744,7 +744,7 @@ def main_loop(alpha):
             s3_client.upload_file(log_path, s3_bucket, s3_key)
             print(f"--> Dashboard verisi S3'e yüklendi: {s3_key}")
         except Exception as e:
-            print(f"--> S3 yükleme hatası: {e}"
+            print(f"--> S3 yükleme hatası: {e}")
 
 
         metrics_history['acc'].append(acc)
