@@ -733,6 +733,17 @@ def main_loop(alpha):
         with open('./results/HAM10000/dashboard_data.json', 'w') as f:
             json.dump(dashboard_data, f, indent=4)
 
+        try:
+            s3_client = boto3.client('s3')
+            # S3 yolunu senin belirttiğin klasöre göre ayarlıyoruz
+            s3_bucket = "sage-ham10k-eda"
+            s3_key = "HAM10000_a1.0_ShapFed_L100_C8_E2_T0.85_LR0.001/dashboard_data.json"
+            
+            s3_client.upload_file(log_path, s3_bucket, s3_key)
+            print(f"--> Dashboard verisi S3'e yüklendi: {s3_key}")
+        except Exception as e:
+            print(f"--> S3 yükleme hatası: {e}")
+
 
         metrics_history['acc'].append(acc)
         metrics_history['acsa'].append(acsa)
