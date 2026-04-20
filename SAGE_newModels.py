@@ -32,10 +32,27 @@ from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-def get_exp_name(args):
-    """Tüm sistemde tutarlı bir deney ismi oluşturur."""
-    return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
-            f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}")
+def get_pretrained_model(num_classes):
+    # Ön-eğitimli modeli indir
+    model = models.resnet18(pretrained=True)
+    # Son katmanı (classifier) bizim sınıf sayımıza göre (7) değiştir
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, num_classes)
+    # Federe öğrenme için BN katmanlarının istatistik güncellemelerini durdur (Client Drift'i önler)
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval() # Running mean/var güncellenmez
+            module.weight.requires_grad = False
+            module.bias.requires_grad = False      
+    return model
+
+# BURA EKLENDİ: Sınıf dışına bağımsız fonksiyon olarak alındı
+def focal_loss(inputs, targets, alpha=1, gamma=2):
+    BCE_loss = F.cross_entropy(inputs, targets, reduction='none')
+    pt = torch.exp(-BCE_loss)
+    F_loss = alpha * (1-pt)**gamma * BCE_loss
+    return F_loss.mean()
+  
 def get_exp_name(args):
     """Tüm sistemde tutarlı ve detaylı bir deney ismi oluşturur."""
     return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
@@ -213,83 +230,14 @@ def patch_resnet_for_ham(model):
     model.avgpool = torch.nn.AdaptiveAvgPool2d(1)
     return model
 
-# class Global(object):
-#     def __init__(self, args):
-#         self.model = ResNet(resnet_size=8, scaling=4,
-#                             save_activations=False, group_norm_num_groups=None,
-#                             freeze_bn=False, freeze_bn_affine=False,
-#                             num_classes=args.num_classes)
-#         if args.dataset == 'HAM10000':
-#             patch_resnet_for_ham(self.model)
-#         self.model.cuda(args.gpu_id)
-#         self.num_classes = args.num_classes
-
-#     def initialize_for_model_fusion(self, args, list_dicts_local_params, list_nums_local_data, initial_global_params):
-#         fused_params = copy.deepcopy(list_dicts_local_params[0])
-#         num_clients = len(list_dicts_local_params)
-        
-#         if args.aggregation_method == 'ShapFed':
-#             # cssv_weights boyutu artık bir matris: (num_clients, args.num_classes)
-#             cssv_weights = compute_cssv(args, list_dicts_local_params, initial_global_params)
-            
-#             # Modelin gövdesi (CNN/ResNet katmanları) için her istemcinin genel sınıf başarı ortalamasını alıyoruz
-#             client_avg_weights = np.mean(cssv_weights, axis=1)
-            
-#             # Ortalamayı güvenlik amacıyla toplamı 1 olacak şekilde normalize edelim
-#             if np.sum(client_avg_weights) > 0:
-#                 client_avg_weights /= np.sum(client_avg_weights)
-#             else:
-#                 client_avg_weights = np.ones(num_clients) / num_clients
-#         else:
-#             # FedAvg (Standart Veri Oranına Göre)
-#             total_data = sum(list_nums_local_data)
-#             client_avg_weights = [n / total_data for n in list_nums_local_data]
-#             # FedAvg'de tüm sınıflar için aynı ağırlığı kopyalıyoruz (kod uyumluluğu için)
-#             cssv_weights = np.array([[w] * args.num_classes for w in client_avg_weights])
-
-#         # Parametreleri Birleştirme (Aggregation)
-#         for name_param in list_dicts_local_params[0]:
-            
-#             # 1. Sınıflandırıcı Ağırlıkları (Her bir sınıf satırı, kendine ait CSSV ile çarpılır)
-#             if name_param == 'classifier.weight':
-#                 fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
-#                 for c in range(args.num_classes): # Her bir sınıf için
-#                     for i in range(num_clients):  # Her bir istemci için
-#                         w_c = cssv_weights[i, c]
-#                         fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
-                        
-#             # 2. Sınıflandırıcı Bias Değerleri (Aynı şekilde sınıf bazlı çarpılır)
-#             elif name_param == 'classifier.bias':
-#                 fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
-#                 for c in range(args.num_classes):
-#                     for i in range(num_clients):
-#                         w_c = cssv_weights[i, c]
-#                         fused_tensor[c] += list_dicts_local_params[i][name_param][c] * w_c
-                        
-#             # 3. Model Gövdesi (Ortalama genel ağırlıklarla çarpılır)
-#             else:
-#                 fused_tensor = sum(
-#                     list_dicts_local_params[i][name_param] * client_avg_weights[i] 
-#                     for i in range(num_clients)
-#                 )
-            
-#             # Aşama 1 Düzeltmesi: Orijinal tensor int64 ise (BatchNorm gibi), tipi geri dönüştür
-#             if list_dicts_local_params[0][name_param].dtype == torch.int64:
-#                 fused_params[name_param] = fused_tensor.to(torch.int64)
-#             else:
-#                 fused_params[name_param] = fused_tensor
-                
-#         return fused_params
 
 class Global(object):
     def __init__(self, args):
-        self.model = ResNet(resnet_size=8, scaling=4,
-                            save_activations=False, group_norm_num_groups=None,
-                            freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
-        if args.dataset == 'HAM10000':
-            patch_resnet_for_ham(self.model)
+       # YENİSİ: Artık doğrudan Pretrained modeli çağırıyoruz
+        self.model = get_pretrained_model(args.num_classes)
         self.model.cuda(args.gpu_id)
         self.num_classes = args.num_classes
+      
 
     def initialize_for_model_fusion(self, args, list_dicts_local_params, list_nums_local_data, initial_global_params):
         fused_params = copy.deepcopy(list_dicts_local_params[0])
@@ -374,48 +322,17 @@ class Global(object):
     def download_params(self):
         return self.model.state_dict()
       
-
-    # def fedavg_eval(self, fedavg_params, data_test, batch_size_test, args):
-    #     self.model.load_state_dict(fedavg_params)
-    #     self.model.eval()
-    #     all_labels, all_predicts = [], []
-    #     num_corrects = 0
-    #     with torch.no_grad():
-    #         for images, labels in DataLoader(data_test, batch_size_test):
-    #             images, labels = images.cuda(args.gpu_id), labels.cuda(args.gpu_id)
-    #             _, outputs = self.model(images)
-    #             _, predicts = torch.max(outputs, -1)
-    #             num_corrects += torch.sum(torch.eq(predicts.cpu(), labels.cpu())).item()
-    #             all_labels.extend(labels.cpu().numpy())
-    #             all_predicts.extend(predicts.cpu().numpy())
-    #     accuracy = num_corrects / len(data_test)
-    #     acsa     = recall_score(all_labels, all_predicts, average='macro', zero_division=0)
-    #     macro_f1 = f1_score(all_labels, all_predicts, average='macro', zero_division=0)
-    #     # --- BURAYA EKLE: Test bittikten sonra GPU temizliği ---
-    #     torch.cuda.empty_cache()
-    #     return accuracy, acsa, macro_f1
-
-    # def download_params(self):
-    #     return self.model.state_dict()
-
-
 # ══════════════════════════════════════════════════════════════
 #  LOCAL MODEL
 # ══════════════════════════════════════════════════════════════
 
 class Local(object):
     def __init__(self, args):
-        self.local_model = ResNet(resnet_size=8, scaling=4,
-                                  save_activations=False, group_norm_num_groups=None,
-                                  freeze_bn=False, freeze_bn_affine=False,
-                                  num_classes=args.num_classes)
-        self.local_G = ResNet(resnet_size=8, scaling=4,
-                              save_activations=False, group_norm_num_groups=None,
-                              freeze_bn=False, freeze_bn_affine=False,
-                              num_classes=args.num_classes)
-        if args.dataset == 'HAM10000':
-            patch_resnet_for_ham(self.local_model)
-            patch_resnet_for_ham(self.local_G)
+      
+        # YENİSİ: Local modeller de Pretrained oldu
+        self.local_model = get_pretrained_model(args.num_classes)
+        self.local_G = get_pretrained_model(args.num_classes)
+      
         self.local_model.cuda(args.gpu_id)
         self.local_G.cuda(args.gpu_id)
         self.criterion = torch.nn.CrossEntropyLoss().cuda(args.gpu_id)
@@ -481,7 +398,9 @@ class Local(object):
                 logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
                 del logits
 
-                Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
+                # ESKİ : Lx = F.cross_entropy(logits_x, targets_x, reduction='mean') altaki yeni focal loss
+                
+                # Lx = focal_loss(logits_x, targets_x) # YENİSİ
 
                 _, logits_u_w_global = self.local_G(inputs_u_w)
                 pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
