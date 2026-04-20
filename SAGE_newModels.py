@@ -137,8 +137,9 @@ def compute_cssv(args, local_models_params, initial_global_params):
     if num_clients == 0:
         return np.array([])
 
-    weight_layer = 'classifier.weight'
-    bias_layer   = 'classifier.bias'
+
+    weight_layer = 'fc.weight'
+    bias_layer   = 'fc.bias'
   
 # 1. Delta W (Ağırlık Güncellemeleri) hesapla
     client_updates = []
@@ -275,7 +276,7 @@ class Global(object):
 
             # --- SENARYO B: ShapFed (Sınıf Bazlı Uzmanlık) ---
             else:
-                if name_param == 'classifier.weight' or name_param == 'classifier.bias':
+                if name_param == 'fc.weight' or name_param == 'fc.bias':
                     # Sınıflandırıcı katmanı satır satır (sınıf bazlı) birleştirilir
                     fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
                     for c in range(args.num_classes):
