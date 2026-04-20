@@ -433,7 +433,7 @@ class Local(object):
             dataset=data_client_unlabeled,
             sampler=RandomSampler(data_client_unlabeled),
             batch_size=args.batch_size_local_labeled_fixmatch * args.mu,
-            drop_last=True, num_workers=2, pin_memory=True
+            drop_last=True, num_workers=4, pin_memory=True
         )
         self.local_model.load_state_dict(global_params)
         self.local_model.train()
