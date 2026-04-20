@@ -730,19 +730,21 @@ def main_loop(alpha):
             "pseudo_labels": {str(k): v for k, v in round_pseudo_dists.items()},
             "global_predictions":  {str(k): v for k, v in global_pred_dist.items()} # Keyleri stringe çevirdik
         }
-        with open('./results/HAM10000/dashboard_data.json', 'w') as f:
+        log_path = './results/HAM10000/dashboard_data.json'
+      
+        with open('log_path, 'w') as f:
             json.dump(dashboard_data, f, indent=4)
 
         try:
             s3_client = boto3.client('s3')
-            # S3 yolunu senin belirttiğin klasöre göre ayarlıyoruz
             s3_bucket = "sage-ham10k-eda"
-            s3_key = "HAM10000_a1.0_ShapFed_L100_C8_E2_T0.85_LR0.001/dashboard_data.json"
+            # exp_name değişkenini kullanarak yolu dinamik yapalım
+            s3_key = f"{exp_name}/dashboard_data.json"
             
             s3_client.upload_file(log_path, s3_bucket, s3_key)
             print(f"--> Dashboard verisi S3'e yüklendi: {s3_key}")
         except Exception as e:
-            print(f"--> S3 yükleme hatası: {e}")
+            print(f"--> S3 yükleme hatası: {e}"
 
 
         metrics_history['acc'].append(acc)
