@@ -95,8 +95,8 @@ def compute_cssv(args, local_models_params, initial_global_params):
   
     if num_clients == 0: return np.array([])
 
-    weight_layer = 'classifier.weight'
-    bias_layer   = 'classifier.bias'
+    weight_layer, bias_layer = 'backbone.fc.weight', 'backbone.fc.bias'
+  
     client_updates = []
     for local_params in local_models_params:
         update = {}
@@ -179,7 +179,7 @@ class Global(object):
             if args.aggregation_method != 'ShapFed':
                 fused_tensor = sum(list_dicts_local_params[i][name_param] * list_nums_local_data[i] for i in range(num_clients)) / total_data
             else:
-                if name_param == 'classifier.weight' or name_param == 'classifier.bias':
+                if name_param == ''backbone.fc.weight' or name_param == 'backbone.fc.bias':
                     fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
                     for c in range(args.num_classes):
                         for i in range(num_clients):
