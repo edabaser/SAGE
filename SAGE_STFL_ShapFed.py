@@ -154,8 +154,7 @@ def patch_resnet_for_ham(model):
 
 class Global(object):
     def __init__(self, args):
-        self.model = ResNet(resnet_size=8, scaling=4, save_activations=False, 
-                            group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
+        self.model = ResNet(num_classes=args.num_classes, pretrained=True)
         if args.dataset == 'HAM10000':
             patch_resnet_for_ham(self.model)
         self.model.cuda(args.gpu_id)
@@ -224,10 +223,8 @@ class Global(object):
 # ══════════════════════════════════════════════════════════════
 class Local(object):
     def __init__(self, args):
-        self.local_model = ResNet(resnet_size=8, scaling=4, save_activations=False, 
-                                  group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
-        self.local_G = ResNet(resnet_size=8, scaling=4, save_activations=False, 
-                              group_norm_num_groups=None, freeze_bn=False, freeze_bn_affine=False, num_classes=args.num_classes)
+        self.local_model = ResNet(num_classes=args.num_classes, pretrained=True)
+        self.local_G = ResNet(num_classes=args.num_classes, pretrained=True)
         if args.dataset == 'HAM10000':
             patch_resnet_for_ham(self.local_model)
             patch_resnet_for_ham(self.local_G)
