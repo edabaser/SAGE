@@ -179,7 +179,7 @@ class Global(object):
             if args.aggregation_method != 'ShapFed':
                 fused_tensor = sum(list_dicts_local_params[i][name_param] * list_nums_local_data[i] for i in range(num_clients)) / total_data
             else:
-                if name_param == ''backbone.fc.weight' or name_param == 'backbone.fc.bias':
+                if name_param == 'backbone.fc.weight' or name_param == 'backbone.fc.bias':
                     fused_tensor = torch.zeros_like(list_dicts_local_params[0][name_param], dtype=torch.float32)
                     for c in range(args.num_classes):
                         for i in range(num_clients):
