@@ -351,7 +351,7 @@ class Indices2Dataset_labeled(Dataset):
                 # 2. Dinamik Çarpan: Nadir sınıf çok çoğaltılır, baskın sınıf (nv) az çoğaltılır.
                 # Örn: nv 100 tane, vasc 5 taneyse -> nv çarpanı 1, vasc çarpanı 20 olur.
                 # Base multiplier (örneğin 3) ekleyerek Iteration Stop hatasını önlüyoruz.
-                base_multiplier = 3 
+                base_multiplier = 2 
                 weight = max(1, int(max_count / class_counts[target])) * base_multiplier
                 self.client_dataset.extend([self.dataset[idx]] * weight)
                 
