@@ -509,7 +509,7 @@ class Local(object):
 
                 inputs = self.interleave(torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1).cuda(args.gpu_id)
 
-                features, logits = self.local_model(inputs)
+                logits = self.local_model(inputs)
                 logits    = self.de_interleave(logits, 2 * args.mu + 1)
                 logits_x  = logits[:batch_size]
                 logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
@@ -522,7 +522,7 @@ class Local(object):
                 Lx = focal_loss(logits_x, targets_x, alpha_weights=weights) 
 
                 with torch.no_grad():
-                    _, logits_u_w_global = self.local_G(inputs_u_w)
+                    logits_u_w_global = self.local_G(inputs_u_w)
                     
                 pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
                 max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
