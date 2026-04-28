@@ -17,7 +17,7 @@ from sklearn.metrics import recall_score, f1_score
 from sklearn.model_selection import train_test_split
 import json
 import math
-from collections import Counter
+from collections import Counter, defaultdict
 import torchvision.models as models
 
 # Custom Modülleriniz (Repo'dan gelen)
@@ -291,6 +291,147 @@ class Global(object):
 #  LOCAL MODEL (EMA IZOLASYONU VE OVERSAMPLING EKLENDI)
 # ══════════════════════════════════════════════════════════════
 
+# class Local(object):
+#     def __init__(self, args, client_id):
+#         self.client_id = client_id
+#         self.local_model = get_pretrained_model(args.num_classes)
+#         self.local_G = get_pretrained_model(args.num_classes)
+      
+#         self.local_model.cuda(args.gpu_id)
+#         self.local_G.cuda(args.gpu_id)
+#         self.optimizer = torch.optim.SGD(
+#             self.local_model.parameters(),
+#             lr=args.lr_local_training, momentum=0.9, weight_decay=1e-4
+#         )
+
+#     def fixmatch_train(self, args, data_client_labeled, data_client_unlabeled, global_params, r, current_ema):
+        
+#         # 1. Oversampling (Sınıf dengesizliğini gidermek için)
+#         local_labels = [int(data_client_labeled[i][1]) for i in range(len(data_client_labeled))]
+#         class_counts = np.bincount(local_labels, minlength=args.num_classes)
+#         class_counts_safe = np.where(class_counts == 0, 1, class_counts) # 0'a bölmeyi engelle
+        
+#         # Focal Loss için ağırlıklar
+#         weights = torch.tensor([sum(class_counts)/(args.num_classes*c) for c in class_counts_safe]).float().cuda(args.gpu_id)
+        
+#         class_weights = 1.0 / class_counts_safe
+#         sample_weights = class_weights[local_labels]
+#         labeled_sampler = WeightedRandomSampler(
+#             weights=torch.tensor(sample_weights, dtype=torch.float64), 
+#             num_samples=len(sample_weights), 
+#             replacement=True
+#         )
+
+#         self.labeled_trainloader = DataLoader(
+#             dataset=data_client_labeled,
+#             sampler=labeled_sampler,
+#             batch_size=args.batch_size_local_labeled_fixmatch,
+#             drop_last=True, num_workers=0, pin_memory=True # Deadlock'ı önlemek için num_workers=0
+#         )
+#         self.unlabeled_trainloader = DataLoader(
+#             dataset=data_client_unlabeled,
+#             sampler=RandomSampler(data_client_unlabeled),
+#             batch_size=args.batch_size_local_labeled_fixmatch * args.mu,
+#             drop_last=True, num_workers=0, pin_memory=True
+#         )
+#         self.local_model.load_state_dict(global_params)
+#         self.local_model.train()
+#         self.local_G.load_state_dict(global_params)
+#         self.local_G.eval()
+
+#         epoch_pseudo_labels = []
+        
+#         # EMA State'i client'ın kendi hafızasından al
+#         class_probs_ema = current_ema.cuda(args.gpu_id)
+
+#         for local_epoch in range(args.local_epochs):
+#             labeled_iter   = iter(self.labeled_trainloader)
+#             unlabeled_iter = iter(self.unlabeled_trainloader)
+#             local_iter = int(len(data_client_unlabeled) / args.batch_size_local_labeled_fixmatch)
+
+#             for epoch in range(local_iter):
+#                 try: inputs_x, targets_x = next(labeled_iter)
+#                 except StopIteration: 
+#                     labeled_iter = iter(self.labeled_trainloader)
+#                     inputs_x, targets_x = next(labeled_iter)
+
+#                 try: inputs_u_w, inputs_u_s, targets_u_gt = next(unlabeled_iter)
+#                 except StopIteration: 
+#                     unlabeled_iter = iter(self.unlabeled_trainloader)
+#                     inputs_u_w, inputs_u_s, targets_u_gt = next(unlabeled_iter)
+
+#                 inputs_x   = inputs_x.cuda(args.gpu_id)
+#                 inputs_u_w = inputs_u_w.cuda(args.gpu_id)
+#                 inputs_u_s = inputs_u_s.cuda(args.gpu_id)
+#                 targets_x  = targets_x.cuda(args.gpu_id)
+#                 batch_size = inputs_x.shape[0]
+
+#                 inputs = self.interleave(torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1).cuda(args.gpu_id)
+
+#                 logits = self.local_model(inputs)
+#                 logits    = self.de_interleave(logits, 2 * args.mu + 1)
+#                 logits_x  = logits[:batch_size]
+#                 logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
+                
+#                 # Ağırlıklı Focal Loss kullanıyoruz
+#                 Lx = focal_loss(logits_x, targets_x, alpha_weights=weights) 
+
+#                 with torch.no_grad():
+#                     logits_u_w_global = self.local_G(inputs_u_w)
+                    
+#                 pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
+#                 max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
+
+#                 pseudo_label_local = torch.softmax(logits_u_w.detach() / args.T, dim=-1)
+#                 max_probs_local, targets_u_local = torch.max(pseudo_label_local, dim=-1)
+
+#                 # STFL: Client izole edilmiş EMA güncellemesi
+#                 class_probs_ema = class_probs_ema * 0.999 + pseudo_label_local.mean(dim=0) * 0.001
+#                 max_ema = class_probs_ema.max()
+#                 dynamic_thresholds = args.threshold * (class_probs_ema / max_ema)
+
+#                 targets_u_local_one_hot  = F.one_hot(targets_u_local,  args.num_classes).float()
+#                 targets_u_global_one_hot = F.one_hot(targets_u_global, args.num_classes).float()
+
+#                 # Sabit threshold yerine dynamic_thresholds kullanıldı
+#                 mask_local  = max_probs_local.ge(dynamic_thresholds[targets_u_local]).float()
+#                 mask_global = max_probs_global.ge(dynamic_thresholds[targets_u_global]).float()
+
+#                 delta_c = torch.clamp(torch.abs(max_probs_local - max_probs_global) + 1e-6, min=1e-6, max=1.0)
+#                 kappa          = torch.log(torch.tensor(2.0)) / 0.05
+#                 lambda_dynamic = torch.clamp(torch.exp(-kappa * delta_c), min=1e-6, max=1.0)
+
+#                 final_targets_u = torch.where(
+#                     mask_local.unsqueeze(1).bool(),
+#                     lambda_dynamic.unsqueeze(1) * targets_u_local_one_hot + (1 - lambda_dynamic).unsqueeze(1) * targets_u_global_one_hot,
+#                     targets_u_global_one_hot
+#                 )
+#                 mask_valid = torch.max(mask_local, mask_global)
+
+#                 valid_pseudo = targets_u_local[mask_valid.bool()].cpu().numpy().tolist()
+#                 epoch_pseudo_labels.extend(valid_pseudo)
+
+#                 logits_u_s_probs = torch.softmax(logits_u_s, dim=-1) + 1e-10
+#                 final_targets_u  = final_targets_u + 1e-10
+
+#                 Lu   = (F.kl_div(logits_u_s_probs.log(), final_targets_u, reduction='none').sum(-1) * mask_valid).mean()
+#                 loss = Lx + args.lambda_u * Lu
+
+#                 self.optimizer.zero_grad()
+#                 loss.backward()
+#                 self.optimizer.step()
+
+#         final_state = {k: v.cpu() for k, v in self.local_model.state_dict().items()}
+#         self.optimizer.zero_grad(set_to_none=True)
+#         pseudo_dist = dict(Counter(epoch_pseudo_labels))
+        
+#         # Güncellenmiş EMA'yı CPU'da döndürüyoruz ki bir sonraki round kullanılabilsin
+#         return final_state, pseudo_dist, class_probs_ema.cpu()
+
+# ══════════════════════════════════════════════════════════════
+#  LOCAL MODEL (EMA IZOLASYONU, OVERSAMPLING VE CONFIDENCE TAKİBİ)
+# ══════════════════════════════════════════════════════════════
+
 class Local(object):
     def __init__(self, args, client_id):
         self.client_id = client_id
@@ -309,7 +450,7 @@ class Local(object):
         # 1. Oversampling (Sınıf dengesizliğini gidermek için)
         local_labels = [int(data_client_labeled[i][1]) for i in range(len(data_client_labeled))]
         class_counts = np.bincount(local_labels, minlength=args.num_classes)
-        class_counts_safe = np.where(class_counts == 0, 1, class_counts) # 0'a bölmeyi engelle
+        class_counts_safe = np.where(class_counts == 0, 1, class_counts) 
         
         # Focal Loss için ağırlıklar
         weights = torch.tensor([sum(class_counts)/(args.num_classes*c) for c in class_counts_safe]).float().cuda(args.gpu_id)
@@ -323,14 +464,12 @@ class Local(object):
         )
 
         self.labeled_trainloader = DataLoader(
-            dataset=data_client_labeled,
-            sampler=labeled_sampler,
+            dataset=data_client_labeled, sampler=labeled_sampler,
             batch_size=args.batch_size_local_labeled_fixmatch,
-            drop_last=True, num_workers=0, pin_memory=True # Deadlock'ı önlemek için num_workers=0
+            drop_last=True, num_workers=0, pin_memory=True 
         )
         self.unlabeled_trainloader = DataLoader(
-            dataset=data_client_unlabeled,
-            sampler=RandomSampler(data_client_unlabeled),
+            dataset=data_client_unlabeled, sampler=RandomSampler(data_client_unlabeled),
             batch_size=args.batch_size_local_labeled_fixmatch * args.mu,
             drop_last=True, num_workers=0, pin_memory=True
         )
@@ -340,9 +479,11 @@ class Local(object):
         self.local_G.eval()
 
         epoch_pseudo_labels = []
-        
-        # EMA State'i client'ın kendi hafızasından al
+        epoch_pseudo_confidences = defaultdict(list) # YENİ: Güven skorlarını tutacağımız sözlük
         class_probs_ema = current_ema.cuda(args.gpu_id)
+
+        # TAKİP DEĞİŞKENLERİ 
+        total_lx, total_lu, correct_preds, total_samples = 0.0, 0.0, 0, 0
 
         for local_epoch in range(args.local_epochs):
             labeled_iter   = iter(self.labeled_trainloader)
@@ -368,16 +509,20 @@ class Local(object):
 
                 inputs = self.interleave(torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1).cuda(args.gpu_id)
 
-                logits = self.local_model(inputs)
+                features, logits = self.local_model(inputs)
                 logits    = self.de_interleave(logits, 2 * args.mu + 1)
                 logits_x  = logits[:batch_size]
                 logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
                 
-                # Ağırlıklı Focal Loss kullanıyoruz
+                # Accuracy Hesabı
+                preds_x = logits_x.argmax(dim=-1)
+                correct_preds += (preds_x == targets_x).sum().item()
+                total_samples += targets_x.size(0)
+
                 Lx = focal_loss(logits_x, targets_x, alpha_weights=weights) 
 
                 with torch.no_grad():
-                    logits_u_w_global = self.local_G(inputs_u_w)
+                    _, logits_u_w_global = self.local_G(inputs_u_w)
                     
                 pseudo_label_global  = torch.softmax(logits_u_w_global.detach() / args.T, dim=-1)
                 max_probs_global, targets_u_global = torch.max(pseudo_label_global, dim=-1)
@@ -385,7 +530,6 @@ class Local(object):
                 pseudo_label_local = torch.softmax(logits_u_w.detach() / args.T, dim=-1)
                 max_probs_local, targets_u_local = torch.max(pseudo_label_local, dim=-1)
 
-                # STFL: Client izole edilmiş EMA güncellemesi
                 class_probs_ema = class_probs_ema * 0.999 + pseudo_label_local.mean(dim=0) * 0.001
                 max_ema = class_probs_ema.max()
                 dynamic_thresholds = args.threshold * (class_probs_ema / max_ema)
@@ -393,7 +537,6 @@ class Local(object):
                 targets_u_local_one_hot  = F.one_hot(targets_u_local,  args.num_classes).float()
                 targets_u_global_one_hot = F.one_hot(targets_u_global, args.num_classes).float()
 
-                # Sabit threshold yerine dynamic_thresholds kullanıldı
                 mask_local  = max_probs_local.ge(dynamic_thresholds[targets_u_local]).float()
                 mask_global = max_probs_global.ge(dynamic_thresholds[targets_u_global]).float()
 
@@ -406,16 +549,24 @@ class Local(object):
                     lambda_dynamic.unsqueeze(1) * targets_u_local_one_hot + (1 - lambda_dynamic).unsqueeze(1) * targets_u_global_one_hot,
                     targets_u_global_one_hot
                 )
-                mask_valid = torch.max(mask_local, mask_global)
+                
+                # YENİ: Geçerli pseudo labelların güven skorlarını (prob) kaydetme
+                mask_valid_bool = torch.max(mask_local, mask_global).bool()
+                valid_pseudo = targets_u_local[mask_valid_bool].cpu().numpy().tolist()
+                valid_probs = max_probs_local[mask_valid_bool].cpu().numpy().tolist()
 
-                valid_pseudo = targets_u_local[mask_valid.bool()].cpu().numpy().tolist()
                 epoch_pseudo_labels.extend(valid_pseudo)
+                for cls, prob in zip(valid_pseudo, valid_probs):
+                    epoch_pseudo_confidences[cls].append(prob)
 
                 logits_u_s_probs = torch.softmax(logits_u_s, dim=-1) + 1e-10
                 final_targets_u  = final_targets_u + 1e-10
 
-                Lu   = (F.kl_div(logits_u_s_probs.log(), final_targets_u, reduction='none').sum(-1) * mask_valid).mean()
+                Lu   = (F.kl_div(logits_u_s_probs.log(), final_targets_u, reduction='none').sum(-1) * mask_valid_bool.float()).mean()
                 loss = Lx + args.lambda_u * Lu
+
+                total_lx += Lx.item()
+                total_lu += Lu.item()
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -425,9 +576,30 @@ class Local(object):
         self.optimizer.zero_grad(set_to_none=True)
         pseudo_dist = dict(Counter(epoch_pseudo_labels))
         
-        # Güncellenmiş EMA'yı CPU'da döndürüyoruz ki bir sonraki round kullanılabilsin
-        return final_state, pseudo_dist, class_probs_ema.cpu()
+        # BİLGİLERİ VE GÜVEN SKORLARINI EKRANA YAZDIR
+        local_acc = (correct_preds / total_samples) * 100 if total_samples > 0 else 0
+        avg_lx = total_lx / (args.local_epochs * local_iter) if local_iter > 0 else 0
+        avg_lu = total_lu / (args.local_epochs * local_iter) if local_iter > 0 else 0
+        
+        # Sınıf bazlı ortalama güven skorlarını hesapla
+        pseudo_conf_avg = {k: (sum(v) / len(v)) * 100 for k, v in epoch_pseudo_confidences.items()}
+        
+        cls_names = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
+        pseudo_str_parts = []
+        for k in sorted(pseudo_dist.keys()):
+            count = pseudo_dist[k]
+            conf = pseudo_conf_avg[k]
+            pseudo_str_parts.append(f"{cls_names[k]}: {count} (%{conf:.1f})")
+            
+        pseudo_str = ", ".join(pseudo_str_parts)
 
+        print(f"    └─ Bitti! Local Acc: %{local_acc:.1f} | Loss(X): {avg_lx:.3f} | Loss(U): {avg_lu:.3f}")
+        if len(pseudo_str) > 0:
+            print(f"    └─ Üretilen Pseudo-Labels: [{pseudo_str}]")
+        else:
+            print(f"    └─ Üretilen Pseudo-Labels: [Hiç üretilmedi]")
+
+        return final_state, pseudo_dist, class_probs_ema.cpu()
 
     def interleave(self, x, size):
         s = list(x.shape)
@@ -564,12 +736,24 @@ def main_loop(alpha):
         round_pseudo_dists = Counter()
 
         for client in online_clients:
-            print(f"--> Client {client} eğitimi başlıyor...")
+          
+            # Client verilerini say ve isimlendir
+            lbl_counts = Counter([data_local_training.targets[i] for i in list_client2indices_labeled[client]])
+            round_client_dists[str(client)] = {str(k): v for k, v in lbl_counts.items()}
+            
+            cls_names = full_dataset.classes if args.dataset == 'HAM10000' else [str(i) for i in range(args.num_classes)]
+            dist_str = ", ".join([f"{cls_names[k]}: {v}" for k, v in sorted(lbl_counts.items())])
+            unlab_len = len(list_client2indices_unlabeled[client])
+
+            print(f"\n▶ Client {client} Eğitimi Başlıyor...")
+            print(f"    ├─ Labeled Veri : [{dist_str}]")
+            print(f"    ├─ Unlabeled Veri: {unlab_len} adet")
+          
             indices2data_labeled.load(list_client2indices_labeled[client])
             indices2data_unlabeled.load(list_client2indices_unlabeled[client])
 
-            lbl_counts = Counter([data_local_training.targets[i] for i in list_client2indices_labeled[client]])
-            round_client_dists[str(client)] = {str(k): v for k, v in lbl_counts.items()}
+            # lbl_counts = Counter([data_local_training.targets[i] for i in list_client2indices_labeled[client]])
+            # round_client_dists[str(client)] = {str(k): v for k, v in lbl_counts.items()}
 
             list_nums_local_data.append(len(list_client2indices_labeled[client]) + len(list_client2indices_unlabeled[client]))
           
