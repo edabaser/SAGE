@@ -624,9 +624,7 @@ class Local(object):
         avg_lu = total_lu / max(total_batches, 1)
         pseudo_dist = dict(Counter(epoch_pseudo_labels))
 
-         # YENİ: Scheduler adımı - LR bir sonraki round için güncellenir
-        self.scheduler.step()
-                          
+                                   
         return final_state, pseudo_dist, avg_lx, avg_lu
 
     def interleave(self, x, size):
@@ -765,7 +763,11 @@ def main_loop(alpha):
     local_model  = Local(args)
 
     start_round, metrics_history = load_checkpoint(
-        global_model.model, local_model.scheduler, local_ckpt_dir, args)
+       model=global_model.model, 
+       scheduler=local_model.scheduler, 
+       local_ckpt_dir=local_ckpt_dir, 
+       args=args
+   )
 
     idx_labeled   = Indices2Dataset_labeled(data_local_training, args.dataset)
     idx_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training, args.dataset)
@@ -894,7 +896,8 @@ def main_loop(alpha):
             f'{result_dir}/{args.aggregation_method}_alpha={alpha}.csv',
             index=False, encoding='utf-8',
         )
-
+        local_model.scheduler.step()
+   
 
 # ══════════════════════════════════════════════════════════════
 # 9. ENTRY POINT
