@@ -151,7 +151,7 @@ def get_exp_name(args):
     )
 
 
-def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
+def save_checkpoint(round_num, model_state, scheduler_state, metrics_history, local_ckpt_dir, 
                     args, filename='checkpoint.pt', backup_every=3):
     folder_name = get_exp_name(args)
     os.makedirs(local_ckpt_dir, exist_ok=True)
