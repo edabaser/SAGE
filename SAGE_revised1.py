@@ -179,7 +179,7 @@ def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
             print(f"[S3-WARN] {e}")
 
 
-def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
+def load_checkpoint(model, scheduler, local_ckpt_dir, args, filename='checkpoint.pt'):
     folder_name = get_exp_name(args)
     local_path = os.path.join(local_ckpt_dir, filename)
     s3_path = f"checkpoints/{folder_name}/{filename}"
