@@ -881,8 +881,12 @@ def main_loop(alpha):
 
         # ── Checkpoint ──
         save_checkpoint(
-            r, global_model.download_params(), local_model.scheduler.state_dict(), metrics_history,
-            local_ckpt_dir=local_ckpt_dir, args=args,
+            round_num=r,
+            model_state=global_model.download_params(),
+            scheduler_state=local_model.scheduler.state_dict(),
+            metrics_history=metrics_history,
+            local_ckpt_dir=local_ckpt_dir,
+            args=args
         )
 
         # ── CSV ──
