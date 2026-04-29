@@ -152,12 +152,13 @@ def get_exp_name(args):
 
 
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir,
-                    args, filename='checkpoint.pt', backup_every=5):
+                    args, filename='checkpoint.pt', backup_every=3):
     folder_name = get_exp_name(args)
     os.makedirs(local_ckpt_dir, exist_ok=True)
     state = {
         'round': round_num,
         'model_state_dict': model_state,
+        'scheduler_state_dict': scheduler_state,
         'metrics_history': metrics_history,
         'args': args,
     }
@@ -201,6 +202,9 @@ def load_checkpoint(model, local_ckpt_dir, args, filename='checkpoint.pt'):
             weights_only=False,
         )
         model.load_state_dict(ckpt['model_state_dict'])
+        if 'scheduler_state_dict' in ckpt: # Eklendi
+            scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+           
         return ckpt['round'] + 1, ckpt['metrics_history']
     except Exception as e:
         print(f"[CKPT] Yükleme hatası: {e} → Sıfırdan başlıyor.")
@@ -401,6 +405,15 @@ class Local(object):
             weight_decay=1e-4,
         )
 
+        # YENİ: Cosine Annealing Scheduler Tanımı
+        # T_max: Toplam round sayısı kadar adımda LR'ı min_lr'a indirir.
+        # eta_min: LR'ın düşeceği minimum değer.
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, 
+            T_max=args.num_rounds, 
+            eta_min=args.lr_local_training * 0.01
+        )
+
     def fixmatch_train(self, args, data_client_labeled,
                        data_client_unlabeled, global_params, r):
         """
@@ -423,6 +436,12 @@ class Local(object):
         # Focal Loss: yerel sınıf dağılımına göre
         focal_criterion = build_focal_loss(class_counts, args.num_classes, device)
 
+        if self.scheduler.last_epoch != r - 1:
+            self.scheduler.last_epoch = r - 1
+            
+        current_lr = self.optimizer.param_groups[0]['lr']
+        print(f"    ├─ Current LR: {current_lr:.6f}") # Log için ekledik 
+                          
         # WeightedRandomSampler: nadir sınıf daha çok seçilsin
         sample_weights = data_client_labeled.sample_weights
         if sample_weights and len(sample_weights) > 0:
@@ -545,7 +564,7 @@ class Local(object):
                 # DOĞRU YÖN: EMA yüksek sınıf (nv) → threshold yüksek kalır.
                 # EMA düşük sınıf (nadir) → threshold DÜŞÜRÜLÜR.
                 # beta=0.4: nv için 0.85, en nadir sınıf için ~0.85*(1-0.4)=0.51
-                beta = 0.4
+                beta = 0.6 # up from 0.4
                 base_threshold = args.threshold
                 dynamic_thresholds = base_threshold * (1.0 - beta * ema_normalized)
                 # [0.51, 0.85] aralığını garantile
@@ -605,6 +624,9 @@ class Local(object):
         avg_lu = total_lu / max(total_batches, 1)
         pseudo_dist = dict(Counter(epoch_pseudo_labels))
 
+         # YENİ: Scheduler adımı - LR bir sonraki round için güncellenir
+        self.scheduler.step()
+                          
         return final_state, pseudo_dist, avg_lx, avg_lu
 
     def interleave(self, x, size):
@@ -743,7 +765,7 @@ def main_loop(alpha):
     local_model  = Local(args)
 
     start_round, metrics_history = load_checkpoint(
-        global_model.model, local_ckpt_dir, args)
+        global_model.model, local_model.scheduler, local_ckpt_dir, args)
 
     idx_labeled   = Indices2Dataset_labeled(data_local_training, args.dataset)
     idx_unlabeled = Indices2Dataset_unlabeled_fixmatch(data_local_training, args.dataset)
@@ -855,7 +877,7 @@ def main_loop(alpha):
 
         # ── Checkpoint ──
         save_checkpoint(
-            r, global_model.download_params(), metrics_history,
+            r, global_model.download_params(), local_model.scheduler.state_dict(), metrics_history,
             local_ckpt_dir=local_ckpt_dir, args=args,
         )
 
