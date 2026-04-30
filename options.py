@@ -93,10 +93,12 @@ def args_parser():
     # --- AWS SageMaker / S3 Yolları ---
     parser.add_argument('--checkpoint_dir', type=str, default='/home/sagemaker-user/SAGE/checkpoints') 
     parser.add_argument('--path_ham10000', type=str, default='/mnt/sagemaker-nvme/SAGE/data/sage-ham10k-eda')
+    parser.add_argument('--path_cifar10', type=str, default='./data', help="CIFAR10 verisinin indirileceği/bulunduğu kök dizin")
     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
     
     # --- Diğer ---
     parser.add_argument('--seed', type=int, default=7)
+    
     
     args = parser.parse_args()
     return args
