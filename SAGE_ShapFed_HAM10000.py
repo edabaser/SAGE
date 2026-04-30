@@ -33,11 +33,11 @@ def get_exp_name(args):
     """Tüm sistemde tutarlı bir deney ismi oluşturur."""
     return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
             f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}")
-def get_exp_name(args):
-    """Tüm sistemde tutarlı ve detaylı bir deney ismi oluşturur."""
-    return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
-            f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}_"
-            f"T{args.threshold}_LR{args.lr_local_training}")
+# def get_exp_name(args):
+#     """Tüm sistemde tutarlı ve detaylı bir deney ismi oluşturur."""
+#     return (f"{args.dataset}_a{args.alpha}_{args.aggregation_method}_"
+#             f"L{args.num_labeled}_C{args.num_online_clients}_E{args.local_epochs}_"
+#             f"T{args.threshold}_LR{args.lr_local_training}")
   
 def save_checkpoint(round_num, model_state, metrics_history, local_ckpt_dir, 
                     args, filename='checkpoint.pt', backup_every=3):
