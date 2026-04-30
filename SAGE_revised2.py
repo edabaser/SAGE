@@ -567,7 +567,7 @@ class Local(object):
                 beta = 0.6 # up from 0.4
                 base_threshold = args.threshold
                 # dynamic_thresholds = base_threshold * (1.0 - beta * ema_normalized)
-                dynamic_thresholds = base_threshold * (1.0 + beta * ema_normalized)
+               dynamic_thresholds = base_threshold * (1.0 - beta * (1.0 - ema_normalized))
 
                 # [0.51, 0.85] aralığını garantile
                 dynamic_thresholds = torch.clamp(dynamic_thresholds, min=0.50, max=base_threshold)
