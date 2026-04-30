@@ -1390,19 +1390,38 @@ def main_loop(alpha):
         )
 
         result_dir  = f'./results/{args.dataset}'
-        # ── CSV ──
+        # # ── CSV ──
+        # result_dir = f'./results/{args.dataset}'
+        # os.makedirs(result_dir, exist_ok=True)
+        # result_file = f'{result_dir}/{args.aggregation_method}_alpha={alpha}.csv'
+        # n = len(metrics_history['acc'])
+        # pd.DataFrame({
+        #     'round': list(range(1, n + 1)),
+        #     'acc':   metrics_history['acc'],
+        #     'acsa':  metrics_history['acsa'],
+        #     'f1':    metrics_history['f1'],
+        # }).to_csv(result_file, index=False, encoding='utf-8')
+
+        # # Scheduler adımı
+        # local_model.scheduler.step()
+
         result_dir = f'./results/{args.dataset}'
         os.makedirs(result_dir, exist_ok=True)
-        result_file = f'{result_dir}/{args.aggregation_method}_alpha={alpha}.csv'
-        n = len(metrics_history['acc'])
-        pd.DataFrame({
-            'round': list(range(1, n + 1)),
+        
+        # Verileri önce bir sözlüğe alalım (daha güvenli)
+        metrics_dict = {
+            'round': list(range(1, len(metrics_history['acc']) + 1)),
             'acc':   metrics_history['acc'],
             'acsa':  metrics_history['acsa'],
-            'f1':    metrics_history['f1'],
-        }).to_csv(result_file, index=False, encoding='utf-8')
-
-        # Scheduler adımı
+            'f1':    metrics_history['f1']
+        }
+        
+        # DataFrame oluştur ve kaydet
+        df_results = pd.DataFrame(metrics_dict)
+        csv_path = f'{result_dir}/{args.aggregation_method}_alpha={alpha}.csv'
+        df_results.to_csv(csv_path, index=False, encoding='utf-8')
+        
+        # Scheduler adımı (Döngü içinde, kayıt işleminden hemen sonra)
         local_model.scheduler.step()
 
 # ══════════════════════════════════════════════════════════════
