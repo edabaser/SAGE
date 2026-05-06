@@ -377,7 +377,15 @@ def _cifar_labeled_transform():
         transforms.ToTensor(),
         transforms.Normalize(mean=CIFAR_MEAN, std=CIFAR_STD),
     ])
-
+def _ham_labeled_transform_standard():
+    """Standart labeled augmentation — ablation (use_medical_augment=False) için."""
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomCrop(size=224, padding=28, padding_mode='reflect'),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=HAM_MEAN, std=HAM_STD),
+    ])
 
 # ──────────────────────────────────────────────
 # Labeled Dataset
