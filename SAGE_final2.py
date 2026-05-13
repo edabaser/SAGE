@@ -495,9 +495,10 @@ class Local:
         prev = self.client_prev_params[key]
         personalized = {}
         for k in global_params:
+            prev_t   = prev[k].float()
+            global_t = global_params[k].float()
             personalized[k] = (
-                (1.0 - coeff) * prev[k].float() +
-                coeff * global_params[k].float()
+                (1.0 - coeff) * prev_t + coeff * global_t
             ).to(global_params[k].dtype)
         return personalized
 
