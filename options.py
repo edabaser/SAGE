@@ -1,31 +1,87 @@
+# # # import argparse
+# # # import os
+
+# # # def args_parser():
+# # #     parser = argparse.ArgumentParser()
+    
+# # #     # --- Donanim ve Veriseti ---
+# # #     parser.add_argument('--gpu_id', type=int, default=0)
+# # #     parser.add_argument('--dataset', type=str, default='HAM10000') 
+# # #     parser.add_argument('--num_clients', type=int, default=20)
+# # #     parser.add_argument('--num_online_clients', type=int, default=8)  
+# # #     parser.add_argument('--num_labeled', type=int, default=1000, help='number of labeled data')
+
+# # #     # --- SAGE/FixMatch Parametreleri ---
+# # #     parser.add_argument('--mu', default=2, type=int)
+# # #     parser.add_argument('--alpha', type=float, default=0.1)
+# # #     parser.add_argument('--threshold', default=0.95, type=float)
+# # #     parser.add_argument('--lambda_u', default=1, type=float)
+# # #     parser.add_argument('--kappa', default=0.5, type=float)
+# # #     parser.add_argument('--T', default=1, type=float)
+
+# # #     # --- Egitim Parametreleri ---
+# # #     parser.add_argument('--local_epochs', type=int, default=2) # 5--> 2
+# # #     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=128)
+# # #     parser.add_argument('--batch_size_local_labeled', type=int, default=128)  
+# # #     parser.add_argument('--batch_size_local_unlabeled', type=int, default=128)
+# # #     parser.add_argument('--batch_size_test', type=int, default=128)
+# # #     parser.add_argument('--lr_local_training', type=float, default=0.1)
+# # #     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
+
+# # #     parser.add_argument('--group_norm_num_groups', type=int, default=16, help="Number of groups for GN")
+
+# # #     # --- Aggregation ve Shapley ---
+# # #     parser.add_argument('--aggregation_method', type=str, default='ShapFed') 
+# # #     parser.add_argument('--shapley_samples', type=int, default=10)
+
+# # #     # --- AWS SageMaker / S3 Yollari ---
+# # #     # Not: Klasor yollarinin sonundaki / isaretine dikkat
+# # #     parser.add_argument('--checkpoint_dir', type=str, default='/home/sagemaker-user/SAGE/checkpoints') 
+# # #     parser.add_argument('--path_ham10000', type=str, default='/mnt/sagemaker-nvme/SAGE/data/sage-ham10k-eda')
+# # #     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
+    
+# # #     # --- Diger ---
+# # #     parser.add_argument('--path_cifar10', type=str, default='./data/CIFAR10/')
+# # #     parser.add_argument('--path_cifar100', type=str, default='./data/CIFAR100/')
+# # #     parser.add_argument('--path_svhn', type=str, default='./data/SVHN/')
+# # #     parser.add_argument('--path_cinic10', type=str, default='./data/CINIC10/')
+# # #     parser.add_argument('--seed', type=int, default=7)
+    
+# # #     args = parser.parse_args()
+# # #     return args
+
 # # import argparse
 # # import os
 
 # # def args_parser():
 # #     parser = argparse.ArgumentParser()
     
-# #     # --- Donanim ve Veriseti ---
+# #     # --- Donanım ve Veriseti ---
 # #     parser.add_argument('--gpu_id', type=int, default=0)
 # #     parser.add_argument('--dataset', type=str, default='HAM10000') 
-# #     parser.add_argument('--num_clients', type=int, default=20)
+    
+# #     # YENİ STRATEJİ: Toplam 12 Client, her round 8'i aktif
+# #     parser.add_argument('--num_clients', type=int, default=12)
 # #     parser.add_argument('--num_online_clients', type=int, default=8)  
-# #     parser.add_argument('--num_labeled', type=int, default=1000, help='number of labeled data')
+# #     parser.add_argument('--num_labeled', type=int, default=100, help='Çok az etiketli veri senaryosu (100)')
 
 # #     # --- SAGE/FixMatch Parametreleri ---
 # #     parser.add_argument('--mu', default=2, type=int)
-# #     parser.add_argument('--alpha', type=float, default=0.1)
-# #     parser.add_argument('--threshold', default=0.95, type=float)
+# #     parser.add_argument('--alpha', type=float, default=1.0) # Dirichlet Alpha (1.0 daha homojen dağıtır)
+    
+# #     # STFL Kullanacağımız için bu Threshold artık başlangıç/maksimum eşik olacak
+# #     parser.add_argument('--threshold', default=0.85, type=float) 
 # #     parser.add_argument('--lambda_u', default=1, type=float)
 # #     parser.add_argument('--kappa', default=0.5, type=float)
 # #     parser.add_argument('--T', default=1, type=float)
 
-# #     # --- Egitim Parametreleri ---
-# #     parser.add_argument('--local_epochs', type=int, default=2) # 5--> 2
-# #     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=128)
-# #     parser.add_argument('--batch_size_local_labeled', type=int, default=128)  
-# #     parser.add_argument('--batch_size_local_unlabeled', type=int, default=128)
-# #     parser.add_argument('--batch_size_test', type=int, default=128)
-# #     parser.add_argument('--lr_local_training', type=float, default=0.1)
+# #     # --- Eğitim Parametreleri ---
+# #     parser.add_argument('--local_epochs', type=int, default=2) 
+# #     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=64) # 128 RAM'i zorlayabilir, 64 daha güvenli
+# #     parser.add_argument('--batch_size_local_labeled', type=int, default=64)  
+# #     parser.add_argument('--batch_size_local_unlabeled', type=int, default=64)
+# #     parser.add_argument('--batch_size_test', type=int, default=64)
+# #     parser.add_argument('--lr_local_training', type=float, default=0.001) # Pretrained model kullandığımız için LR düşürdük! (0.1 çok yüksek)
 # #     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
 
 # #     parser.add_argument('--group_norm_num_groups', type=int, default=16, help="Number of groups for GN")
@@ -34,76 +90,120 @@
 # #     parser.add_argument('--aggregation_method', type=str, default='ShapFed') 
 # #     parser.add_argument('--shapley_samples', type=int, default=10)
 
-# #     # --- AWS SageMaker / S3 Yollari ---
-# #     # Not: Klasor yollarinin sonundaki / isaretine dikkat
+# #     # --- AWS SageMaker / S3 Yolları ---
 # #     parser.add_argument('--checkpoint_dir', type=str, default='/home/sagemaker-user/SAGE/checkpoints') 
 # #     parser.add_argument('--path_ham10000', type=str, default='/mnt/sagemaker-nvme/SAGE/data/sage-ham10k-eda')
+# #     parser.add_argument('--path_cifar10', type=str, default='./data', help="CIFAR10 verisinin indirileceği/bulunduğu kök dizin")
 # #     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
     
-# #     # --- Diger ---
-# #     parser.add_argument('--path_cifar10', type=str, default='./data/CIFAR10/')
-# #     parser.add_argument('--path_cifar100', type=str, default='./data/CIFAR100/')
-# #     parser.add_argument('--path_svhn', type=str, default='./data/SVHN/')
-# #     parser.add_argument('--path_cinic10', type=str, default='./data/CINIC10/')
+# #     # --- Diğer ---
 # #     parser.add_argument('--seed', type=int, default=7)
+    
     
 # #     args = parser.parse_args()
 # #     return args
 
+
+
+
+
 # import argparse
-# import os
 
 # def args_parser():
-#     parser = argparse.ArgumentParser()
-    
-#     # --- Donanım ve Veriseti ---
+#     parser = argparse.ArgumentParser(description='SAGE Federated Learning')
+
+#     # ── Donanım ──
 #     parser.add_argument('--gpu_id', type=int, default=0)
-#     parser.add_argument('--dataset', type=str, default='HAM10000') 
-    
-#     # YENİ STRATEJİ: Toplam 12 Client, her round 8'i aktif
-#     parser.add_argument('--num_clients', type=int, default=12)
-#     parser.add_argument('--num_online_clients', type=int, default=8)  
-#     parser.add_argument('--num_labeled', type=int, default=100, help='Çok az etiketli veri senaryosu (100)')
-
-#     # --- SAGE/FixMatch Parametreleri ---
-#     parser.add_argument('--mu', default=2, type=int)
-#     parser.add_argument('--alpha', type=float, default=1.0) # Dirichlet Alpha (1.0 daha homojen dağıtır)
-    
-#     # STFL Kullanacağımız için bu Threshold artık başlangıç/maksimum eşik olacak
-#     parser.add_argument('--threshold', default=0.85, type=float) 
-#     parser.add_argument('--lambda_u', default=1, type=float)
-#     parser.add_argument('--kappa', default=0.5, type=float)
-#     parser.add_argument('--T', default=1, type=float)
-
-#     # --- Eğitim Parametreleri ---
-#     parser.add_argument('--local_epochs', type=int, default=2) 
-#     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=64) # 128 RAM'i zorlayabilir, 64 daha güvenli
-#     parser.add_argument('--batch_size_local_labeled', type=int, default=64)  
-#     parser.add_argument('--batch_size_local_unlabeled', type=int, default=64)
-#     parser.add_argument('--batch_size_test', type=int, default=64)
-#     parser.add_argument('--lr_local_training', type=float, default=0.001) # Pretrained model kullandığımız için LR düşürdük! (0.1 çok yüksek)
-#     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
-
-#     parser.add_argument('--group_norm_num_groups', type=int, default=16, help="Number of groups for GN")
-
-#     # --- Aggregation ve Shapley ---
-#     parser.add_argument('--aggregation_method', type=str, default='ShapFed') 
-#     parser.add_argument('--shapley_samples', type=int, default=10)
-
-#     # --- AWS SageMaker / S3 Yolları ---
-#     parser.add_argument('--checkpoint_dir', type=str, default='/home/sagemaker-user/SAGE/checkpoints') 
-#     parser.add_argument('--path_ham10000', type=str, default='/mnt/sagemaker-nvme/SAGE/data/sage-ham10k-eda')
-#     parser.add_argument('--path_cifar10', type=str, default='./data', help="CIFAR10 verisinin indirileceği/bulunduğu kök dizin")
-#     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
-    
-#     # --- Diğer ---
 #     parser.add_argument('--seed', type=int, default=7)
-    
-    
+
+#     # ── Dataset ──
+#     parser.add_argument('--dataset', type=str, default='HAM10000',
+#                         choices=['HAM10000', 'CIFAR10', 'CIFAR100', 'SVHN', 'CINIC10'])
+#     parser.add_argument('--path_ham10000', type=str,
+#                         default='/mnt/sagemaker-nvme/SAGE/data/sage-ham10k-eda')
+#     parser.add_argument('--path_cifar10',  type=str, default='./data/CIFAR10/')
+#     parser.add_argument('--path_cifar100', type=str, default='./data/CIFAR100/')
+#     parser.add_argument('--path_svhn',     type=str, default='./data/SVHN/')
+#     parser.add_argument('--path_cinic10',  type=str, default='./data/CINIC10/')
+
+#     # ── Model Seçimi ──
+#     parser.add_argument('--model', type=str, default='resnet18',
+#                         choices=['resnet8', 'resnet18'],
+#                         help='resnet8: orijinal SAGE modeli (CIFAR için), '
+#                              'resnet18: pretrained ImageNet modeli (HAM10000 için)')
+
+#     # ── Federated Learning ──
+#     parser.add_argument('--num_clients',        type=int,   default=12)
+#     parser.add_argument('--num_online_clients', type=int,   default=8)
+#     parser.add_argument('--num_rounds',         type=int,   default=300)
+#     parser.add_argument('--num_labeled',        type=int,   default=100,
+#                         help='Sınıf başına etiketli veri sayısı (IPC)')
+#     parser.add_argument('--alpha',              type=float, default=1.0,
+#                         help='Dirichlet dağılım parametresi (düşük=heterojen)')
+
+#     # ── Aggregation ──
+#     parser.add_argument('--aggregation_method', type=str, default='ShapFed',
+#                         choices=['FedAvg', 'ShapFed'])
+#     parser.add_argument('--shapley_samples',    type=int, default=10,
+#                         help='Monte Carlo Shapley örneklem sayısı')
+
+#     # ── FixMatch / SSL ──
+#     parser.add_argument('--mu',           type=int,   default=2,
+#                         help='Unlabeled/Labeled batch oranı')
+#     parser.add_argument('--threshold',    type=float, default=0.95,
+#                         help='Pseudo-label baz eşiği')
+#     parser.add_argument('--lambda_u',     type=float, default=1.0,
+#                         help='Unlabeled loss ağırlığı')
+#     parser.add_argument('--T',            type=float, default=1.0,
+#                         help='Pseudo-label temperature')
+#     parser.add_argument('--local_epochs', type=int,   default=2)
+
+#     # ── Optimizer ──
+#     parser.add_argument('--lr_local_training',      type=float, default=0.001)
+#     parser.add_argument('--lr_distillation_training', type=float, default=0.01)
+#     parser.add_argument('--lr_min_ratio',           type=float, default=0.01,
+#                         help='CosineAnnealing: eta_min = lr * ratio')
+
+#     # ── Batch Size ──
+#     parser.add_argument('--batch_size_local_labeled_fixmatch', type=int, default=32)
+#     parser.add_argument('--batch_size_local_labeled',          type=int, default=32)
+#     parser.add_argument('--batch_size_local_unlabeled',        type=int, default=64)
+#     parser.add_argument('--batch_size_test',                   type=int, default=64)
+
+#     # ══════════════════════════════════════════════════════
+#     # ABLATION FLAGS — Her bileşen bağımsız açılıp kapatılır
+#     # ══════════════════════════════════════════════════════
+
+#     parser.add_argument('--use_focal_loss', action='store_true', default=False,
+#                         help='[Ablation] Focal Loss kullan (kapalıysa CrossEntropy)')
+
+#     parser.add_argument('--use_stfl', action='store_true', default=False,
+#                         help='[Ablation] STFL dinamik threshold (kapalıysa sabit threshold)')
+#     parser.add_argument('--stfl_beta', type=float, default=0.6,
+#                         help='STFL beta parametresi (use_stfl aktifken geçerli)')
+
+#     parser.add_argument('--use_weighted_sampler', action='store_true', default=False,
+#                         help='[Ablation] WeightedRandomSampler (kapalıysa RandomSampler)')
+
+#     parser.add_argument('--use_medical_augment', action='store_true', default=False,
+#                         help='[Ablation] Medikal-güvenli augmentation '
+#                              '(kapalıysa standart FixMatch augmentation)')
+
+#     parser.add_argument('--use_cosine_lr', action='store_true', default=False,
+#                         help='[Ablation] CosineAnnealingLR (kapalıysa sabit LR)')
+
+#     parser.add_argument('--use_groupnorm', action='store_true', default=False,
+#                         help='[Ablation] ResNet18 için BN→GN dönüşümü '
+#                              '(resnet8 için GroupNorm zaten options içinde)')
+#     parser.add_argument('--group_norm_num_groups', type=int, default=16)
+
+#     # ── AWS ──
+#     parser.add_argument('--checkpoint_dir', type=str,
+#                         default='/home/sagemaker-user/SAGE/checkpoints')
+#     parser.add_argument('--s3_bucket', type=str, default='sage-ham10k-eda')
+
 #     args = parser.parse_args()
 #     return args
-
-
 
 
 
