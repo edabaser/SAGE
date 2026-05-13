@@ -310,15 +310,15 @@ class Global:
     def update_ema(self, new_params):
         """
         global_model_ema = decay * prev_ema + (1-decay) * new_params
-        Ilk round'da ema = new_params (soguk baslangiç yok).
+        Tum tensorler CPU'da tutulur, cihaz uyumsuzlugu engellenir.
         """
         if self.ema_params is None:
-            self.ema_params = {k: v.float().clone() for k, v in new_params.items()}
+            self.ema_params = {k: v.float().cpu().clone() for k, v in new_params.items()}
         else:
             for k in self.ema_params:
                 self.ema_params[k] = (
-                    self.ema_decay * self.ema_params[k] +
-                    (1.0 - self.ema_decay) * new_params[k].float()
+                    self.ema_decay * self.ema_params[k].cpu() +
+                    (1.0 - self.ema_decay) * new_params[k].float().cpu()
                 )
 
     # ── Aggregation ──────────────────────────────────────────
