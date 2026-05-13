@@ -298,9 +298,17 @@ class Global:
         prev, score = self.client_prev_params[key], self.client_shapley_mean.get(key, 0.0)
         alpha = min(score * args.personalization_strength, args.max_personalization_alpha)
         
+        # personalized = {}
+        # for k in global_params:
+        #     personalized[k] = (alpha * prev[k].float() + (1.0 - alpha) * global_params[k].float()).to(global_params[k].dtype)
+        # return personalized
         personalized = {}
         for k in global_params:
-            personalized[k] = (alpha * prev[k].float() + (1.0 - alpha) * global_params[k].float()).to(global_params[k].dtype)
+            # prev[k]'yı global_params[k] ile aynı cihaza (.to(global_params[k].device)) taşıyoruz
+            personalized[k] = (
+                alpha * prev[k].to(global_params[k].device).float() + 
+                (1.0 - alpha) * global_params[k].float()
+            ).to(global_params[k].dtype)
         return personalized
 
     def update_client_state(self, client_id, local_params, shapley_score_mean):
