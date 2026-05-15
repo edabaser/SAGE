@@ -33,6 +33,22 @@ from Dataset.dataset import (
     classify_label, Indices2Dataset_labeled,
     Indices2Dataset_unlabeled_fixmatch, partition_train,
 )
+
+def partition_train_perclass(list_label2indices, ipc_per_class):
+    """
+    Her sinif icin farkli IPC degeri kullanan partition_train.
+    ipc_per_class: [ipc_0, ipc_1, ..., ipc_C] listesi
+    """
+    list_label2indices_labeled   = []
+    list_label2indices_unlabeled = []
+    for c, indices in enumerate(list_label2indices):
+        ipc_c = ipc_per_class[c] if c < len(ipc_per_class) else ipc_per_class[-1]
+        idx_shuffle = np.random.permutation(indices)
+        labeled   = idx_shuffle[:ipc_c]
+        unlabeled = idx_shuffle[ipc_c:]
+        list_label2indices_labeled.append(labeled)
+        list_label2indices_unlabeled.append(unlabeled)
+    return list_label2indices_labeled, list_label2indices_unlabeled
 from Dataset.sample_dirichlet import clients_indices, clients_indices_homo
 
 from PIL import ImageFile
@@ -601,9 +617,8 @@ class Local:
                     class_probs_ema = class_probs_ema * 0.99 + pseudo_l.mean(0).detach() * 0.01
                     ema_norm = class_probs_ema / (class_probs_ema.max() + 1e-8)
                     beta = args.stfl_beta
-                    # dyn_thresh = args.threshold * (1.0 + beta * ema_norm)
-                    dyn_thresh = args.threshold * (1.0 - beta * (1.0 - ema_norm))
-                    dyn_thresh = torch.clamp(dyn_thresh, min=0.5, max=0.99)
+                    dyn_thresh = args.threshold * (1.0 + beta * ema_norm)
+                    dyn_thresh = torch.clamp(dyn_thresh, min=args.threshold, max=0.99)
                     mask_l = max_pl.ge(dyn_thresh[target_l]).float()
                     mask_g = max_pg.ge(dyn_thresh[target_g]).float()
                 else:
@@ -763,10 +778,40 @@ def main_loop(alpha):
     # ── Veri Dagitimy ────────────────────────────────────────
     rng = np.random.RandomState(args.seed)
     list_label2indices = classify_label(data_local_training, args.num_classes)
-    ipc = args.num_labeled
-    print(f"[DATA] IPC={ipc} | Toplam etiketli={ipc * args.num_classes}")
 
-    l_lab, l_unlab = partition_train(list_label2indices, ipc)
+    # IPC hesapla: num_labeled verilmisse sabit kullan,
+    # yoksa label_ratio ile her sinif icin ayri hesapla
+    if args.num_labeled is not None:
+        # Sabit IPC modu (eski davranis)
+        ipc = args.num_labeled
+        ipc_per_class = [ipc] * args.num_classes
+        print(f"[DATA] Sabit IPC={ipc} | Toplam etiketli~{ipc * args.num_classes}")
+    else:
+        # Oransal mod: her sinifin label_ratio kadar labeled
+        ipc_per_class = []
+        for c in range(args.num_classes):
+            n_class = len(list_label2indices[c])
+            n_labeled = max(1, int(n_class * args.label_ratio))
+            # Guvence: en az 1, en fazla sinif buyuklugu kadar
+            n_labeled = min(n_labeled, n_class)
+            ipc_per_class.append(n_labeled)
+        ipc = ipc_per_class  # partition_train listeli IPC alacak sekilde guncellendi
+        names_tmp = CLASS_NAMES_HAM if args.num_classes == 7 else [str(c) for c in range(args.num_classes)]
+        print(f"[DATA] Oransal IPC (ratio={args.label_ratio}):")
+        total_labeled = 0
+        for c, n in enumerate(ipc_per_class):
+            n_total = len(list_label2indices[c])
+            pct = n / n_total * 100
+            cname = names_tmp[c] if c < len(names_tmp) else str(c)
+            print(f"  {cname:<6}: {n:>4}/{n_total:<5} ({pct:.1f}% labeled)")
+            total_labeled += n
+        print(f"  Toplam labeled: {total_labeled}")
+
+    # partition_train: sabit IPC veya per-class IPC listesi destekler
+    if isinstance(ipc, list):
+        l_lab, l_unlab = partition_train_perclass(list_label2indices, ipc)
+    else:
+        l_lab, l_unlab = partition_train(list_label2indices, ipc)
     if alpha == 0:
         c_lab   = clients_indices_homo(l_lab,   args.num_classes, args.num_clients)
         c_unlab = clients_indices_homo(l_unlab, args.num_classes, args.num_clients)
