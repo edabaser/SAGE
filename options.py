@@ -27,8 +27,13 @@ def args_parser():
     parser.add_argument('--num_clients',        type=int,   default=12)
     parser.add_argument('--num_online_clients', type=int,   default=8)
     parser.add_argument('--num_rounds',         type=int,   default=300)
-    parser.add_argument('--num_labeled',        type=int,   default=100,
-                        help='Sinif basina etiketli veri (IPC)')
+    parser.add_argument('--num_labeled',        type=int,   default=None,
+                        help='Sinif basina sabit etiketli veri sayisi (IPC). '
+                             'label_ratio ile birlikte kullanilirsa num_labeled onceliklidir.')
+    parser.add_argument('--label_ratio',        type=float, default=0.2,
+                        help='Her sinifin kac yuzdesi labeled olacak (0.0-1.0). '
+                             'Ornek: 0.1 -> her sinifin %%10u labeled. '
+                             'num_labeled verilmisse bu parametre goz ardi edilir.')
     parser.add_argument('--alpha', type=float,  default=1.0,
                         help='Dirichlet alpha (dusuk=heterojen)')
 
