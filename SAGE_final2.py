@@ -976,7 +976,6 @@
 #     torch.backends.cudnn.deterministic = True
 #     args = args_parser()
 #     main_loop(args.alpha)
-
 """
 SAGE_final.py — Unified Federated Semi-Supervised Learning
 =============================================================
@@ -1152,7 +1151,7 @@ def get_exp_name(args):
 
 def save_checkpoint(round_num, model_state, scheduler_state, metrics_history,
                     local_ckpt_dir, args, filename='checkpoint.pt',
-                    backup_every=5, extra_state=None):
+                    backup_every=3, extra_state=None):
     folder_name = get_exp_name(args)
     os.makedirs(local_ckpt_dir, exist_ok=True)
     state = {
@@ -1167,15 +1166,15 @@ def save_checkpoint(round_num, model_state, scheduler_state, metrics_history,
     local_path = os.path.join(local_ckpt_dir, filename)
     torch.save(state, local_path)
     if round_num % backup_every == 0 or round_num == args.num_rounds:
+        s3_path = f"checkpoints/{folder_name}/{filename}"
         try:
             s3 = boto3.client('s3')
-            s3.upload_file(local_path, args.s3_bucket,
-                           f"checkpoints/{folder_name}/{filename}")
+            s3.upload_file(local_path, args.s3_bucket, s3_path)
             local_csv = f'./results/{args.dataset}/{get_exp_name(args)}.csv'
             if os.path.exists(local_csv):
                 s3.upload_file(local_csv, args.s3_bucket,
                                f"results/{folder_name}/metrics.csv")
-            print(f"[S3] Round {round_num} yedeklendi.")
+            print(f"[S3] Round {round_num} → s3://{args.s3_bucket}/{s3_path}")
         except Exception as e:
             print(f"[S3-WARN] {e}")
 
