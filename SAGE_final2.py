@@ -603,7 +603,7 @@ class Local:
                     beta = args.stfl_beta
                     # dyn_thresh = args.threshold * (1.0 + beta * ema_norm)
                     dyn_thresh = args.threshold * (1.0 - beta * (1.0 - ema_norm))
-                    dyn_thresh = torch.clamp(dyn_thresh, min=args.threshold, max=0.99)
+                    dyn_thresh = torch.clamp(dyn_thresh, min=0.5, max=0.99)
                     mask_l = max_pl.ge(dyn_thresh[target_l]).float()
                     mask_g = max_pg.ge(dyn_thresh[target_g]).float()
                 else:
