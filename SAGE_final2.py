@@ -2594,8 +2594,9 @@ class Local:
                     class_probs_ema = class_probs_ema * 0.99 + pseudo_l.mean(0).detach() * 0.01
                     ema_norm = class_probs_ema / (class_probs_ema.max() + 1e-8)
                     beta = args.stfl_beta
-                    dyn_thresh = args.threshold * (1.0 + beta * ema_norm)
-                    dyn_thresh = torch.clamp(dyn_thresh, min=args.threshold, max=0.99)
+                    dyn_thresh = args.threshold * (1.0 - beta * (1.0 - ema_norm))
+
+                    dyn_thresh = torch.clamp(dyn_thresh, min=0.5, max=0.99)
                     mask_l = max_pl.ge(dyn_thresh[target_l]).float()
                     mask_g = max_pg.ge(dyn_thresh[target_g]).float()
                 else:
